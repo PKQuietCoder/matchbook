@@ -1,0 +1,29 @@
+Matchbook includes and derives from third-party open data. Attribution follows.
+
+--------------------------------------------------------------------------------
+BPI Challenge 2019
+  van Dongen, Boudewijn (2019): BPI Challenge 2019. Version 1.
+  4TU.ResearchData. dataset. https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1
+  License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+           https://creativecommons.org/licenses/by/4.0/
+  Used in: logs/snapshot/ (a sampled subset, unmodified field values), and as the
+  source distribution fitted by seed/fit.py. Changes made: sampling, conversion
+  from IEEE XES to the Matchbook canonical CSV/SQLite schema, and documented
+  deterministic tie-breaking of equal timestamps.
+
+--------------------------------------------------------------------------------
+Helpdesk event log
+  Verenich, Ilya (2016): Helpdesk. Version 1.
+  Mendeley Data. https://doi.org/10.17632/39bp3vv62t.1
+  License: MIT
+  Used in: logs/helpdesk/ (committed verbatim), as the small fixture for tests.
+
+--------------------------------------------------------------------------------
+Process Discovery Contest (2016-2025)
+  4TU.ResearchData. License: CC0 1.0 Universal (public domain dedication).
+  Used in: the correctness harness (tests/pdc/), fetched on demand, not committed.
+
+--------------------------------------------------------------------------------
+Everything else in this repository -- the mining library, the agent, the policy
+corpus, SPEC.md and facts.yaml -- is original work and is NOT derived from any
+third-party dataset.

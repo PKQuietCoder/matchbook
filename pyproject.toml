@@ -1,0 +1,35 @@
+[project]
+name = "matchbook"
+version = "0.1.0"
+description = "Agentic purchase-to-pay process mining on open data"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# The agent half. The mining half must never need these.
+agent = [
+    "openai-agents>=0.2",
+    "litellm>=1.70",
+    "opentelemetry-sdk>=1.30",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "rank-bm25>=0.2.2",
+]
+# Only if the columnar core misses a performance target. BSD-licensed.
+fast = ["numpy>=1.24"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["process", "bridge", "agent", "observability", "seed", "server", "logs"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

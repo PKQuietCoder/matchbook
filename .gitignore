@@ -1,0 +1,12 @@
+# Third-party logs are fetched, never committed (except logs/snapshot and logs/helpdesk).
+logs/raw/
+logs/eventstore.db
+build/
+spans.db
+.sessions.db
+data/matchbook.db
+.env
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

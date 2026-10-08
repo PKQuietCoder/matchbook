@@ -1,0 +1,30 @@
+{
+  "salt": "matchbook-bpic19-snapshot-v1",
+  "target_cases": 2000,
+  "floor_per_flow": 120,
+  "allocation": {
+    "3-way match, invoice before GR": 1756,
+    "3-way match, invoice after GR": 121,
+    "Consignment": 120,
+    "2-way match": 120
+  },
+  "candidates_per_flow": 2000,
+  "full_log": {
+    "cases": 251734,
+    "events": 1595923,
+    "activities": 42,
+    "variants": 11973
+  },
+  "sample": {
+    "log_id": "bpic19-sample",
+    "events": 13679,
+    "cases": 2117,
+    "activities": 35,
+    "resources": 316,
+    "variants": 378,
+    "first_event": "2017-01-05T22:59:00+00:00",
+    "last_event": "2019-01-17T16:52:00+00:00",
+    "tie_broken_events": 2354,
+    "license": "CC BY 4.0"
+  }
+}

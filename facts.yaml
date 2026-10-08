@@ -1,0 +1,136 @@
+# The Matchbook facts sheet.
+#
+# Every numeric or rule-like claim in the policy corpus, the agent's tools, and
+# the control rules comes from this file. The LLM writes prose; code computes
+# facts. seed/policies.py renders the policy docs from these constants,
+# seed/validate.py checks every numeric claim in every doc against them, and
+# process/rules.py evaluates the same constants against any event log -- so a
+# control violation on the human log and a violation by the agent are measured
+# against one definition.
+#
+# Four-way binding: facts.yaml <-> policy doc <-> tool code <-> control rule.
+# A test asserts all four agree.
+
+org_name: Meridian Industrial Supply
+currency: EUR
+
+# The world's fixed "today". All date arithmetic uses this, never now().
+world_asof: 2026-07-01
+
+# --- Three-way match tolerance -------------------------------------------------
+# An invoice may exceed the matched value by the LOOSER of the two allowances.
+# Checked by agent/matching.py and by control rule CTRL-TOLERANCE.
+tolerance_abs_eur: 50
+tolerance_pct: 2.0
+tolerance_rule: looser_of_abs_or_pct
+gr_quantity_tolerance_pct: 5.0
+
+# --- Release and approval limits, EUR, on purchase-order item net value --------
+approval_limits_eur:
+  requisitioner: 0
+  buyer: 25000
+  ap_clerk: 0
+  controller: 250000
+
+# At or below this, an eligible clearing executes. Above it, the clearing is
+# queued for a controller. Strictly above, so exactly the limit auto-executes.
+clearing_auto_approve_limit_eur: 10000
+
+# --- Payment terms, calendar days from invoice receipt ------------------------
+# The observed median for Record Invoice Receipt -> Clear Invoice in the real
+# log is ~25 days, which is consistent with net 30.
+payment_terms_days: 30
+early_payment_discount_days: 10
+early_payment_discount_pct: 2.0
+
+# --- Duplicate-invoice detection, per vendor ----------------------------------
+duplicate_invoice_window_days: 90
+duplicate_invoice_value_tolerance_eur: 1
+
+# --- Segregation of duties ----------------------------------------------------
+# No single resource may perform both activities of a pair on the same purchase
+# order item. This is the one authorization rule that is a PROCESS property
+# rather than a record property: whether a caller may act depends on what that
+# caller already did on this case. No prompt can enforce it.
+segregation_of_duties:
+  enforced: true
+  conflicting_pairs:
+    - ["Create Purchase Order Item", "Record Invoice Receipt"]
+    - ["Release Purchase Order", "Record Goods Receipt"]
+    - ["Record Goods Receipt", "Clear Invoice"]
+    - ["Remove Payment Block", "Clear Invoice"]
+
+# --- Matching flows -----------------------------------------------------------
+# These strings are the exact `Item Category` values in BPI Challenge 2019,
+# read off the file. seed/validate.py asserts set equality against the
+# ingested log's observed values and fails with the diff.
+gr_required_flows:
+  - "3-way match, invoice before GR"
+  - "3-way match, invoice after GR"
+gr_not_required_flows:
+  - "2-way match"
+  - "Consignment"
+
+# Observed case shares in the full log, for weighting sample-based aggregates.
+flow_shares_observed:
+  "3-way match, invoice before GR": 0.878
+  "3-way match, invoice after GR": 0.060
+  "Consignment": 0.058
+  "2-way match": 0.004
+
+# --- Controller SLA on a queued clearing or an escalation, hours --------------
+controller_sla_hours: 24
+
+# A vendor caller may never see another vendor's documents, for any reason.
+vendor_scope: own_vendor_id_only
+
+# --- Activity rank: the declared tie-break ------------------------------------
+# 99.99% of timestamps in BPI 2019 are minute-precision, and same-minute ties
+# affect ~17% of events. Something has to order them, so it is declared here
+# rather than left to the parser: lower rank sorts earlier. Every event ordered
+# by this rule is recorded in EventLog.tie_broken and reported by
+# `process tie-breaks`, so a conformance number computed over tied events can
+# say so instead of looking exact.
+#
+# The ranking follows the normal purchase-to-pay order. It is a judgment call,
+# which is exactly why it is auditable and why the sensitivity of a result to
+# it can be measured.
+activity_rank:
+  "Create Purchase Requisition Item": 10
+  "Release Purchase Requisition": 20
+  "SRM: Created": 30
+  "SRM: Complete": 31
+  "SRM: Awaiting Approval": 32
+  "SRM: Document Completed": 33
+  "SRM: In Transfer to Execution Syst.": 34
+  "SRM: Ordered": 35
+  "SRM: Change was Transmitted": 36
+  "SRM: Transaction Completed": 37
+  "Create Purchase Order Item": 40
+  "Change Approval for Purchase Order": 45
+  "Release Purchase Order": 50
+  "Receive Order Confirmation": 60
+  "Update Order Confirmation": 61
+  "Change Quantity": 70
+  "Change Price": 71
+  "Change Currency": 72
+  "Change payment term": 73
+  "Change Delivery Indicator": 74
+  "Change Storage Location": 75
+  "Change Final Invoice Indicator": 76
+  "Change Rejection Indicator": 77
+  "Block Purchase Order Item": 80
+  "Reactivate Purchase Order Item": 81
+  "Vendor creates invoice": 90
+  "Vendor creates debit memo": 91
+  "Record Goods Receipt": 100
+  "Record Service Entry Sheet": 101
+  "Cancel Goods Receipt": 102
+  "Record Invoice Receipt": 110
+  "Record Subsequent Invoice": 111
+  "Cancel Invoice Receipt": 112
+  "Cancel Subsequent Invoice": 113
+  "Set Payment Block": 120
+  "Remove Payment Block": 121
+  "Clear Invoice": 130
+  "Delete Purchase Order Item": 140
