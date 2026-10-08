@@ -55,13 +55,14 @@ description.**
 | Claim in the literature / challenge description | What the file actually contains |
 | --- | --- |
 | "60 subsidiaries" | The `Company` attribute has **4** distinct values, and they are wildly skewed: `companyID_0000` holds 250,686 of 251,734 cases (99.6%), `companyID_0003` holds 1,044, and `companyID_0001` and `companyID_0002` hold **2 cases each**. Any per-company analysis is really a single-company analysis. |
-| "day-granularity timestamps" | Timestamps are **minute**-precision: 99.99% of 1,595,927 events have `seconds == 00`, and only 173 sit at exact midnight. The real ordering problem is not date-only values -- it is **same-minute ties**, which affect 17.2% of events in the snapshot. |
+| "day-granularity timestamps" | Timestamps are **minute**-precision: 99.99% of 1,595,927 events have `seconds == 00`, and only 173 sit at exact midnight. The real ordering problem is not date-only values -- it is **same-minute ties**. In the snapshot they affect 17.2% of events, but only **3.0% are consequential**: a tie between two events of the *same* activity cannot change a sequence, and most of them are. |
 
 Confirmed as described:
 
 - **42 activities**, led by `Record Goods Receipt` (314,098), `Create Purchase Order Item` (251,736), `Record Invoice Receipt` (228,760), `Vendor creates invoice` (219,920), `Clear Invoice` (194,394) and `Record Service Entry Sheet` (164,975). That last one is substantial and is missing from the commonly cited activity list.
 - **629 distinct resources: 607 `user_*` + 20 `batch_*`**, exactly the published human/batch split, plus two sentinels (`UNKNOWN`, `NONE`). The naming convention is what `process.xes.classify_resource` reads, so no committed batch-user list is needed. Note there are no `vendor_*` resources -- the `Vendor creates invoice` events are not attributed to a vendor principal, so the vendor resource kind only ever appears in the synthetic and agent logs.
 - **11,973 distinct variants** over 251,734 cases, with the **top 20 variants covering 70.5%** of cases. So the process has a clear spine and a very long tail: discovery must be run on an explicit coverage sublog, or it will return a flower model.
+- **The tie-break is not cosmetic.** Applying the declared `activity_rank` from `facts.yaml` collapses the snapshot from **378 variants to 373** and changes the event sequence of **76 cases**. A discovered model or a fitness number is therefore partly a consequence of that declared ordering, and a result should say which ordering it used. Reproduce with `python -m process ingest logs/snapshot/bpic19-sample-events.csv.gz --log-id bpic19-sample --sensitivity`; the committed snapshot deliberately preserves the source file's event order so the baseline survives.
 - **1,975 vendors**; the four matching flows split 87.8% / 6.0% / 5.8% / 0.4% (`3-way match, invoice before GR` / `after GR` / `Consignment` / `2-way match`). The flow strings above are the exact `Item Category` values and are what `facts.yaml` must match.
 
 ### Known data-quality traits -- curriculum, not defects to hide

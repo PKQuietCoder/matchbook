@@ -31,7 +31,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from process import csvio, store, xes  # noqa: E402
+from process import config, csvio, store, variants as variant_tools, xes  # noqa: E402
 from process.log import EventLogBuilder  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -167,6 +167,9 @@ def build_log(selected, *, activity_rank: dict[str, int] | None = None):
 
 
 def write_disclosure(stats: dict[str, Any], sample_log, destination: Path) -> Path:
+    sensitivity = variant_tools.order_sensitivity(
+        variant_tools.events_of(sample_log), activity_rank=config.activity_rank()
+    )
     total_cases = stats["cases"]
     total_events = stats["events"]
     sample_activities = sample_log.activity_frequency()
@@ -215,6 +218,24 @@ def write_disclosure(stats: dict[str, Any], sample_log, destination: Path) -> Pa
         f"{len(sample_log.precision) / max(sample_log.event_count, 1):.1%} |",
         f"| Tie-broken events | (not computed on the full log) | "
         f"{len(sample_log.tie_broken) / max(sample_log.event_count, 1):.1%} |",
+        "",
+        "### What the declared tie-break costs",
+        "",
+        "Timestamps are minute-precision, so same-minute events must be ordered by the",
+        "declared `activity_rank` in `facts.yaml`. That choice is not cosmetic -- it changes",
+        "the variant structure, and therefore any discovered model built on it:",
+        "",
+        "| | Variants |",
+        "| --- | --- |",
+        f"| Under arrival order only | {sensitivity['variants_arrival_order']:,} |",
+        f"| Under the declared ranking | {sensitivity['variants_declared_order']:,} |",
+        f"| Collapsed by the ranking | {sensitivity['variants_collapsed']:,} |",
+        f"| Cases whose sequence changed | {sensitivity['cases_whose_sequence_changed']:,} |",
+        "",
+        "Measured from the original XES at snapshot build time. The committed CSV keeps",
+        "the source file's event order precisely so this stays reproducible:",
+        "`python -m process ingest logs/snapshot/bpic19-sample-events.csv.gz "
+        "--log-id bpic19-sample --sensitivity`.",
         "",
         "### Flow mix -- where the floor distorts the sample",
         "",
@@ -317,6 +338,12 @@ def main(argv: list[str] | None = None) -> int:
             f"{stats['short_falls']}; raise --candidates-per-flow"
         )
 
+    # Deliberately built WITHOUT the declared ranking, so the committed CSV
+    # preserves the source file's own event order. That is the only baseline
+    # against which the tie-break's effect can be measured; writing the snapshot
+    # pre-ranked would destroy the evidence and make `--sensitivity` report a
+    # reassuring zero forever. `process ingest` applies the ranking on the way
+    # in, so the log a reader works with is still the ranked one.
     log = build_log(selected)
     events_path = csvio.write_csv(log, out_dir / "bpic19-sample-events.csv.gz")
     attributes_path = csvio.write_case_attributes(log, out_dir / "bpic19-sample-cases.csv.gz")
@@ -342,6 +369,9 @@ def main(argv: list[str] | None = None) -> int:
             "variants": len(stats["variants"]),
         },
         "sample": log.summary(),
+        "order_sensitivity": variant_tools.order_sensitivity(
+            variant_tools.events_of(log), activity_rank=config.activity_rank()
+        ),
     }
     (out_dir / "sample-manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
 

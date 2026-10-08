@@ -28,8 +28,8 @@ def _load(args) -> EventLog:
     return log
 
 
-def cmd_ingest(args) -> int:
-    rank = config.activity_rank()
+def _read_source(args, rank: dict[str, int] | None) -> EventLog:
+    """Read the source with a given ranking. Called twice for --sensitivity."""
     source = Path(args.path)
     attribution = args.attribution or ""
     if source.suffix in (".xes", ".gz") and ".csv" not in source.name:
@@ -40,7 +40,6 @@ def cmd_ingest(args) -> int:
             license=args.license,
             attribution=attribution,
             max_cases=args.max_cases,
-            on_progress=lambda seen, kept: print(f"  {seen:,} read / {kept:,} kept", flush=True),
         )
     else:
         columns = dict(csvio.HELPDESK_COLUMNS) if args.columns == "helpdesk" else None
@@ -54,8 +53,48 @@ def cmd_ingest(args) -> int:
         )
         if args.case_attributes:
             csvio.read_case_attributes(log, args.case_attributes)
+    return log
+
+
+def cmd_ingest(args) -> int:
+    rank = config.activity_rank()
+    log = _read_source(args, rank)
     store.save(log, args.store, doi=args.doi, resource_kind=xes.classify_resource)
     print(json.dumps(log.summary(), indent=1))
+
+    if args.sensitivity:
+        # The baseline must come from an UNRANKED read of the source. Deriving
+        # it from the log we just built would compare the ranked order against
+        # itself and report a reassuring zero.
+        baseline = _read_source(args, None)
+        measurement = variants.order_sensitivity(
+            variants.events_of(baseline), log_id=args.log_id, activity_rank=rank
+        )
+        print("\nwhat the declared tie-break costs:")
+        print(
+            f"  tie-broken events              {measurement['tie_broken_events']:,} "
+            f"({measurement['tie_broken_share']:.1%})\n"
+            f"  ...of which consequential      {measurement['consequential_ties']:,} "
+            f"({measurement['consequential_tie_share']:.1%}) -- a tie between two events of "
+            f"the same activity cannot change anything\n"
+            f"  variants under arrival order   {measurement['variants_arrival_order']:,}\n"
+            f"  variants under declared order  {measurement['variants_declared_order']:,}\n"
+            f"  collapsed by the ranking       {measurement['variants_collapsed']:,}\n"
+            f"  cases whose sequence changed   {measurement['cases_whose_sequence_changed']:,}"
+        )
+        if measurement["tie_broken_events"] and not measurement["variants_collapsed"]:
+            print(
+                "\nNote: ties exist but the ranking changed nothing, which usually means "
+                "this source is ALREADY in ranked order -- a file Matchbook wrote, rather "
+                "than the original export. Measure against the original source to get a "
+                "meaningful figure."
+            )
+        elif measurement["variants_collapsed"]:
+            print(
+                "\nThe ranking is not cosmetic: it changes the variant structure, so a "
+                "discovered model or a fitness number is partly a consequence of it. Say "
+                "which ordering a result used."
+            )
     return 0
 
 
@@ -155,6 +194,12 @@ def cmd_tie_breaks(args) -> int:
                 writer.writerow([case_id])
         print(f"wrote {path}")
     print("\nAny conformance result over these cases depends on that declared ordering.")
+
+    print(
+        "To measure what that ordering costs, re-ingest the source with "
+        "`process ingest <source> --sensitivity`: it cannot be measured from the store, "
+        "whose stored order is already the ranked one."
+    )
     return 0
 
 
@@ -224,6 +269,11 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--columns", choices=["canonical", "helpdesk"], default="canonical")
     ingest.add_argument("--case-attributes", help="CSV of per-case attributes")
     ingest.add_argument("--max-cases", type=int)
+    ingest.add_argument(
+        "--sensitivity",
+        action="store_true",
+        help="measure how much facts.yaml activity_rank changes the variant structure",
+    )
     ingest.set_defaults(func=cmd_ingest)
 
     sub.add_parser("logs", help="list logs in the store").set_defaults(func=cmd_logs)
@@ -248,6 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ties = with_log(sub.add_parser("tie-breaks", help="audit assumed event order"))
     ties.add_argument("--out")
+
     ties.set_defaults(func=cmd_tie_breaks)
 
     compare = sub.add_parser("compare", help="diff two logs' process maps")

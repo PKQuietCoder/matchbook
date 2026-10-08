@@ -33,3 +33,44 @@ def test_real_log_has_a_long_tail(snapshot_log):
     # The shape that forces discovery onto a coverage sublog.
     assert summary["variants"] > 100
     assert summary["coverage"][0.5] < summary["coverage"][0.95]
+
+
+def test_order_sensitivity_measures_a_real_effect(snapshot_log):
+    """The declared tie-break changes the process, and the figure must not
+    silently regress to a reassuring zero.
+
+    Two earlier versions of this measurement did exactly that: one took its
+    baseline from a log already loaded out of the store, the other from the
+    ranked log it had just built. Both compared the ranked order against
+    itself. The baseline has to be an unranked read of the source, which is why
+    the committed snapshot preserves the source file's event order.
+    """
+    from process import config
+
+    rows = variants.events_of(snapshot_log)
+    measured = variants.order_sensitivity(rows, activity_rank=config.activity_rank())
+    assert measured["tie_broken_events"] > 2000
+    # Most ties are between two events of the same activity and cannot matter.
+    assert 0 < measured["consequential_ties"] < measured["tie_broken_events"]
+    # The ranking collapses variants, so it is not cosmetic.
+    assert measured["variants_collapsed"] > 0
+    assert measured["cases_whose_sequence_changed"] > 0
+
+
+def test_no_ranking_means_no_change(snapshot_log):
+    measured = variants.order_sensitivity(variants.events_of(snapshot_log), activity_rank=None)
+    assert measured["variants_collapsed"] == 0
+
+
+def test_same_activity_ties_are_never_consequential():
+    """Reordering two identical labels cannot change a sequence."""
+    from process.log import EventLogBuilder
+    from tests.conftest import moment
+
+    builder = EventLogBuilder("t")
+    for _ in range(3):
+        builder.add(case_id="c", activity="A", timestamp=moment(1, 9, 0))
+    rows = variants.events_of(builder.build())
+    measured = variants.order_sensitivity(rows, activity_rank={"A": 1})
+    assert measured["tie_broken_events"] == 2
+    assert measured["consequential_ties"] == 0

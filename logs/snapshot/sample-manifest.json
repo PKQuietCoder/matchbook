@@ -26,5 +26,16 @@
     "last_event": "2019-01-17T16:52:00+00:00",
     "tie_broken_events": 2354,
     "license": "CC BY 4.0"
+  },
+  "order_sensitivity": {
+    "events": 13679,
+    "cases": 2117,
+    "tie_broken_events": 2354,
+    "tie_broken_share": 0.17208860296805323,
+    "cases_affected": 174,
+    "variants_arrival_order": 378,
+    "variants_declared_order": 373,
+    "variants_collapsed": 5,
+    "cases_whose_sequence_changed": 76
   }
 }

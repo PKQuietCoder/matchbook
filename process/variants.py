@@ -176,3 +176,81 @@ def summary(log: EventLog) -> dict[str, object]:
         "self_loop_ratio": self_loop_ratio(log),
         "top_rework_activities": rework_by_activity(log).most_common(5),
     }
+
+
+def order_sensitivity(
+    events, *, log_id: str = "sensitivity", activity_rank: dict[str, int] | None = None
+) -> dict[str, object]:
+    """How much does the declared tie-break change the discovered process?
+
+    99.99% of BPI 2019's timestamps are minute-precision and same-minute ties
+    affect ~17% of events, so something must order them, and `facts.yaml
+    activity_rank` does. This measures what that choice costs.
+
+    `events` must be an iterable of `(case_id, activity, timestamp)` **in
+    source order**, because that is the only honest baseline. Measuring this
+    from a log already loaded out of the store cannot work: its stored order IS
+    the ranked order, so the comparison would trivially report no difference
+    and read as "the ranking is free". It is not.
+    """
+    from process.log import EventLogBuilder
+
+    rows = list(events)
+
+    def rebuild(rank):
+        builder = EventLogBuilder(log_id, activity_rank=rank)
+        for case_id, activity, timestamp in rows:
+            builder.add(case_id=case_id, activity=activity, timestamp=timestamp)
+        return builder.build()
+
+    plain = rebuild(None)
+    ranked = rebuild(activity_rank or {})
+
+    # Not every tie matters. Two events of the SAME activity at the same
+    # instant cannot be meaningfully ordered and reordering them changes
+    # nothing -- a self-repeat is a self-repeat either way. Only a tie between
+    # *different* activities can change the sequence, so that is the figure to
+    # quote. On the helpdesk log the distinction is the whole story: 91 tied
+    # events, and a declared ranking changes not one case.
+    consequential = 0
+    for trace in plain.traces():
+        signature = trace.activity_ids
+        stamps = trace.timestamps
+        for index in range(1, len(signature)):
+            if stamps[index] == stamps[index - 1] and signature[index] != signature[index - 1]:
+                consequential += 1
+    plain_variants = plain.variants()
+    ranked_variants = ranked.variants()
+    changed = sum(
+        1
+        for case_id in plain.case_ids
+        if plain.trace(case_id).activity_ids != ranked.trace(case_id).activity_ids
+    )
+    return {
+        "events": plain.event_count,
+        "cases": plain.case_count,
+        "tie_broken_events": len(plain.tie_broken),
+        "tie_broken_share": len(plain.tie_broken) / plain.event_count if plain.event_count else 0.0,
+        "cases_affected": len(plain.tie_broken_cases()),
+        "consequential_ties": consequential,
+        "consequential_tie_share": consequential / plain.event_count if plain.event_count else 0.0,
+        "variants_arrival_order": len(plain_variants),
+        "variants_declared_order": len(ranked_variants),
+        "variants_collapsed": len(plain_variants) - len(ranked_variants),
+        "cases_whose_sequence_changed": changed,
+    }
+
+
+def events_of(log) -> list[tuple[str, str, int]]:
+    """(case_id, activity, timestamp) triples in the log's stored order."""
+    rows: list[tuple[str, str, int]] = []
+    for trace in log.traces():
+        for position in trace.indices:
+            rows.append(
+                (
+                    trace.case_id,
+                    log.activities.name_of(log.activity_id[position]),
+                    log.timestamp[position],
+                )
+            )
+    return rows

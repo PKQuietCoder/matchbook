@@ -34,6 +34,21 @@ yields the same sample, and the selection is checkable without this script.
 | Events at day precision | 0.0% | 0.0% |
 | Tie-broken events | (not computed on the full log) | 17.2% |
 
+### What the declared tie-break costs
+
+Timestamps are minute-precision, so same-minute events must be ordered by the
+declared `activity_rank` in `facts.yaml`. That choice is not cosmetic -- it changes
+the variant structure, and therefore any discovered model built on it:
+
+| | Variants |
+| --- | --- |
+| Under arrival order only | 378 |
+| Under the declared ranking | 373 |
+| Collapsed by the ranking | 5 |
+| Cases whose sequence changed | 76 |
+
+Reproduce with `python -m process tie-breaks bpic19-sample --sensitivity`.
+
 ### Flow mix -- where the floor distorts the sample
 
 | Flow | Full log cases | Full % | Sample cases | Sample % |
