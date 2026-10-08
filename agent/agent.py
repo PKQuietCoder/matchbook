@@ -112,11 +112,35 @@ class ToolCall:
 
 
 @dataclass(frozen=True)
+class Usage:
+    """What one model call cost, in tokens.
+
+    These four fields are *disjoint*, which is the Anthropic API's convention
+    and the opposite of the OpenTelemetry GenAI spec's: `input_tokens` counts
+    only the tokens billed at the full input rate, with cache reads and cache
+    writes counted separately. Prompt tokens for a call are therefore
+    `input_tokens + cache_read_tokens + cache_write_tokens`, and each third is
+    billed at a different rate -- see bridge/cost.py. Treating cache reads as a
+    subset here would under-count the prompt and over-state the cache saving.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+
+
+@dataclass(frozen=True)
 class ModelStep:
-    """One model turn: either tool calls, or a final reply."""
+    """One model turn: either tool calls, or a final reply.
+
+    `usage` is None for a model that does not spend tokens, which is the
+    scripted path and therefore every offline run.
+    """
 
     tool_calls: tuple[ToolCall, ...] = ()
     reply: str | None = None
+    usage: Usage | None = None
 
 
 class Model(Protocol):
@@ -287,6 +311,15 @@ def run_session(
                 decision = model.step(messages)
                 model_span.ok = True
                 model_span.attributes["tool_calls"] = [call.name for call in decision.tool_calls]
+                # Tokens belong to the model call that spent them. A tool span
+                # gets none of its own: the cost a tool result causes arrives as
+                # *input* on the next model call, and splitting it across the
+                # tool would invent a number the provider never reported.
+                if decision.usage is not None:
+                    model_span.input_tokens = decision.usage.input_tokens
+                    model_span.output_tokens = decision.usage.output_tokens
+                    model_span.cache_read_tokens = decision.usage.cache_read_tokens
+                    model_span.cache_write_tokens = decision.usage.cache_write_tokens
 
             if decision.tool_calls:
                 for call in decision.tool_calls:

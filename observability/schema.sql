@@ -33,6 +33,20 @@ CREATE TABLE IF NOT EXISTS spans (
   activity    TEXT,                   -- the business activity, if this span is one
   actor       TEXT,
   value_cents INTEGER,
+  -- Token usage, on model spans only. A tool call spends no tokens of its own:
+  -- the cost its result causes arrives as *input* on the next model call.
+  --
+  -- The three input columns are DISJOINT, following the Anthropic API: prompt
+  -- tokens for a call are input + cache_read + cache_write, each billed at a
+  -- different rate. The OpenTelemetry GenAI names these columns echo
+  -- (gen_ai.usage.input_tokens, .cache_read.input_tokens, ...) instead define
+  -- the cache fields as subsets of the input total, so an OTel exporter must
+  -- add them up rather than copy them straight across. There is no total
+  -- column and no total in that spec either: sum on read.
+  input_tokens       INTEGER,
+  output_tokens      INTEGER,
+  cache_read_tokens  INTEGER,
+  cache_write_tokens INTEGER,
   attributes  TEXT NOT NULL DEFAULT '{}'
 );
 

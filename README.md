@@ -84,13 +84,21 @@ What that reports on the committed sample of real data:
   `Remove Payment Block` events against 124 `Set Payment Block`, so on the human log
   this rule measures *log completeness*, not misconduct. It is the best teaching rule
   in the catalogue for exactly that reason.
+- **The tolerance control reports itself unevaluable on this log, and that is the
+  honest answer.** BPI 2019 carries a single case-level value (`Cumulative net worth
+  (EUR)`) replicated onto every event, so there is no separate goods-receipt value and
+  invoice value to compare. An earlier version of the rule subtracted one event's value
+  from another's, reported zero violations, and that zero was mistaken for a finding.
+  A rule whose inputs are absent now declines to report rather than returning a clean
+  bill of health. It runs normally on the synthetic and agent logs, where the
+  instrumentation records both values.
 
 ## The agent, end to end with no API key
 
 The agent half runs from scripted sessions, so the whole pipeline — world,
 tools, spans, the bridge, the mined log, conformance, failure analysis — is
-reproducible with no model key and no budget. A live model adapter plugs into
-the same `Model` protocol in `agent/agent.py`.
+reproducible with no model key and no budget. This is the default, and it is
+what CI and the demo use.
 
 ```bash
 uv run python -m seed.generate                       # deterministic world + policy corpus
@@ -103,6 +111,76 @@ uv run python -m bridge.spans_to_log build/spans.db --log-id agent-attempts --la
 uv run python -m process compare bpic19-sample agent-business
 uv run python -m analysis.review list --sort retries
 ```
+
+## The same pipeline on a live model
+
+`--script` chooses the *session*; `--model` chooses who answers it. The scripted
+model replays fixed steps; `claude-sonnet-5` decides its own tool calls. Both
+write to the same span store, so the bridge, the mined log and the cost report
+cannot tell them apart.
+
+```bash
+cp .env.example .env            # then put ANTHROPIC_API_KEY in it
+uv sync --extra agent           # the only model dependency is `anthropic`
+uv run python -m agent --script clean_receipt_then_clear --reset     --model claude-sonnet-5
+```
+
+The live adapter is `agent/model_anthropic.py`. It implements the one-method
+`Model` protocol in `agent/agent.py` and nothing else changes — there is no
+agent framework in this repo, and the session loop is Matchbook's own.
+
+### What the process cost
+
+Mining says which paths the agent takes. The cost report says what each one is
+worth, which is the argument for looking at them together.
+
+```bash
+uv run python -m bridge.cost --by run        # per session
+uv run python -m bridge.cost --by activity   # per business activity
+uv run python -m bridge.cost --by case       # per purchase-order item
+uv run python -m bridge.cost --by variant --log-id agent-business
+```
+
+Tokens are recorded on model spans; activities belong to tool spans. The two
+are joined on `(run_id, step)`, because the tool calls at step N are the ones
+the model call at step N requested — so a step's tokens are the price of
+deciding to do what that step did. Steps that only looked things up, and the
+final reply step, are reported in their own buckets rather than smeared over
+the activities: deliberation-versus-action is usually the first thing worth
+seeing. When one step requests two activities its tokens are divided equally
+between them, and every report counts how many steps were split, the same way
+the ingest reports how many events were tie-broken. A scripted run spends
+nothing, and the report says *unmeasured* rather than showing a column of
+zeros, because a free run and an unpriced one are not the same claim.
+
+#### Measured, not estimated
+
+One live `clean_receipt_then_clear` session on `claude-sonnet-5`, 2026-10-08:
+
+| step | what it did | input | cache write | cache read | output |
+| --- | --- | --- | --- | --- | --- |
+| 1 | looked the item up | 112 | 1,867 | 0 | 106 |
+| 2 | recorded the goods receipt | 509 | 0 | 1,867 | 290 |
+| 3 | wrote the reply | 857 | 0 | 1,867 | 92 |
+| | **run** | **1,478** | **1,867** | **3,734** | **488** |
+
+$0.0133 for the session. Three things in that table are worth keeping:
+
+- **Prompt caching pays for itself inside a single session.** The tools-plus-
+  system prefix is 1,867 tokens, written once on step 1 and read back on steps
+  2 and 3. Billed uncached it would be 5,601 full-rate input tokens ($0.0112);
+  billed as one write plus two reads it is $0.0054. The remaining opportunity
+  is *across* sessions, and `render_system_prompt` currently blocks it by
+  interpolating the actor, role and company code into the system prompt, which
+  gives every actor a different prefix. Moving that context into the first user
+  message would make the prefix shared. Not done yet, because the saving should
+  be measured rather than asserted.
+- **The cheapest step is the one that changed the world.** Recording the
+  receipt cost less than looking the item up beforehand and less than writing
+  the reply afterwards. Deliberation, not action, is where the money goes --
+  which is why the report keeps those buckets separate.
+- **Output tokens dominate per-token cost.** 488 output tokens at $10/MTok cost
+  more than 1,478 input tokens at $2/MTok. Reply length is a cost lever.
 
 ### What the bridge decides, and why it matters
 
@@ -158,7 +236,7 @@ logs/
   snapshot/               the pinned CC BY 4.0 BPI 2019 sample (committed)
   helpdesk/               the MIT Helpdesk log: the fast fixture (committed)
 SPEC.md                   the prescriptive process, with requirement IDs
-process/                  THE MINING LIBRARY -- stdlib only
+process/                  THE MINING LIBRARY -- PyYAML is its only dependency
   log.py                  the columnar EventLog; the tie-break audit
   store.py schema.sql     the SQLite event store; every log side by side
   xes.py csvio.py         streaming IEEE-XES and CSV, both directions
@@ -176,6 +254,7 @@ agent/
   auth.py                 the access matrix, including the stateful duty rule
   tools.py                the five tools; clear_invoice's check order is spec'd
   agent.py                prompt, prompt_version, the _call() seam, the loop
+  model_anthropic.py      the live Claude Sonnet adapter behind the Model protocol
   scripts.py              scripted sessions, including deliberate failure fixtures
   killswitch.py           off / clearing / payments / readonly
 observability/
@@ -183,11 +262,12 @@ observability/
 bridge/
   spans_to_log.py         *** spans -> event log: the case notion and the alphabet
   activity_map.yaml       which tools are business activities, and which are not
+  cost.py                 tokens -> money, per activity / case / variant
 analysis/
   normalize.py            one normalized trace record, with process features
   review.py               open coding, sorted so the interesting traces come first
   state/                  append-only annotations, labels, and the mode taxonomy
-tests/                    offline; no API keys; 87 tests
+tests/                    offline; no API keys; 107 tests
 ```
 
 ## What is not built yet

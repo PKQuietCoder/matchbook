@@ -28,7 +28,7 @@ def _load(args) -> EventLog:
     return log
 
 
-def _read_source(args, rank: dict[str, int] | None) -> EventLog:
+def _read_source(args, rank: dict[str, int] | None, *, progress: bool = True) -> EventLog:
     """Read the source with a given ranking. Called twice for --sensitivity."""
     source = Path(args.path)
     attribution = args.attribution or ""
@@ -40,6 +40,12 @@ def _read_source(args, rank: dict[str, int] | None) -> EventLog:
             license=args.license,
             attribution=attribution,
             max_cases=args.max_cases,
+            # The full log is 728 MB and takes minutes; silence looks like a hang.
+            on_progress=(
+                (lambda seen, kept: print(f"  {seen:,} read / {kept:,} kept", flush=True))
+                if progress
+                else None
+            ),
         )
     else:
         columns = dict(csvio.HELPDESK_COLUMNS) if args.columns == "helpdesk" else None
@@ -66,7 +72,7 @@ def cmd_ingest(args) -> int:
         # The baseline must come from an UNRANKED read of the source. Deriving
         # it from the log we just built would compare the ranked order against
         # itself and report a reassuring zero.
-        baseline = _read_source(args, None)
+        baseline = _read_source(args, None, progress=False)
         measurement = variants.order_sensitivity(
             variants.events_of(baseline), log_id=args.log_id, activity_rank=rank
         )
@@ -161,7 +167,9 @@ def cmd_rules(args) -> int:
     payload = rules.report(log, policy, rule_ids=rule_ids)
     print(json.dumps(payload, indent=1))
     if args.out:
-        violations = rules.evaluate(log, policy, rule_ids=rule_ids)
+        violations, inapplicable = rules.evaluate(log, policy, rule_ids=rule_ids)
+        for rule_id, reason in sorted(inapplicable.items()):
+            print(f"\n{rule_id} could NOT be evaluated on this log:\n  {reason}")
         path = Path(args.out)
         path.parent.mkdir(parents=True, exist_ok=True)
         fieldnames = ["rule_id", "case_id", "summary", "at_seq", "order_assumed"]

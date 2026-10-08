@@ -97,10 +97,28 @@ Unexpected execution failures raise.
 | `clear_invoice` | `clearing_id`, `amount_eur`, `status` of `cleared` or `queued_for_approval` | `paused`; `permission_denied`; `not_found`; `not_eligible` for a payment block, a missing goods receipt on a GR-required flow, a tolerance breach, a deleted item, or no invoice |
 
 **TOOL-6.** `clear_invoice` evaluates its checks in a fixed order, and the
-order is part of the specification: kill switch → authorization scope → amount
-against the caller's limit → item not deleted → an unpaid invoice exists →
-no payment block → three-way match within tolerance → per-case segregation of
-duties. Nothing clears without passing all of them.
+order is part of the specification:
+
+1. kill switch
+2. authorization scope and role
+3. item not deleted
+4. an unpaid invoice exists, and is not already queued
+5. no payment block is set
+6. the three-way match has receipt evidence where the flow requires it
+7. the invoice is within tolerance
+8. per-case segregation of duties
+9. the amount is at or below the caller's limit
+
+Nothing clears without passing all of them. Checks 1-6 **refuse**; checks 7-9
+**queue for a controller**.
+
+The amount is checked **last**, after every control, and that ordering is
+deliberate. Checking it earlier would queue an above-limit invoice that is
+also payment-blocked or missing its goods receipt, which hands a controller a
+decision nobody can make -- the block's reason is still unresolved. Refusing
+first and queuing only what is otherwise clearable means a human's attention
+goes to genuine judgement calls: an amount above a limit, a variance to accept
+or reject, a duty conflict to reassign.
 
 **TOOL-7.** The three-way match is computed by `seed/controls.py` and never by
 the model. A numeric claim about a variance that is not preceded by a

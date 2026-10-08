@@ -34,12 +34,34 @@ def _now() -> str:
     return datetime.now(tz=timezone.utc).isoformat(timespec="microseconds")
 
 
+# Columns added to `spans` after the first release. `CREATE TABLE IF NOT EXISTS`
+# is a no-op on a table that already exists, so a span store written before
+# these columns existed would silently keep its old shape and every token query
+# would fail on it. Adding them here makes opening an old store the migration.
+ADDED_SPAN_COLUMNS = (
+    ("input_tokens", "INTEGER"),
+    ("output_tokens", "INTEGER"),
+    ("cache_read_tokens", "INTEGER"),
+    ("cache_write_tokens", "INTEGER"),
+)
+
+
+def _migrate(connection: sqlite3.Connection) -> None:
+    """Add any missing late columns. Idempotent, and safe on a fresh store."""
+    existing = {row["name"] for row in connection.execute("PRAGMA table_info(spans)")}
+    with connection:
+        for column, declaration in ADDED_SPAN_COLUMNS:
+            if column not in existing:
+                connection.execute(f"ALTER TABLE spans ADD COLUMN {column} {declaration}")
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(destination)
     connection.row_factory = sqlite3.Row
     connection.executescript(SCHEMA_PATH.read_text())
+    _migrate(connection)
     return connection
 
 
@@ -59,6 +81,10 @@ class Span:
     activity: str | None = None
     actor: str | None = None
     value_cents: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
@@ -121,7 +147,8 @@ class SpanStore:
             self._connection.execute(
                 "INSERT OR REPLACE INTO spans (span_id, run_id, parent_id, name, kind, step,"
                 " started_at, ended_at, ok, error, item_key, activity, actor, value_cents,"
-                " attributes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,"
+                " attributes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     span.span_id,
                     span.run_id,
@@ -137,13 +164,28 @@ class SpanStore:
                     span.activity,
                     span.actor,
                     span.value_cents,
+                    span.input_tokens,
+                    span.output_tokens,
+                    span.cache_read_tokens,
+                    span.cache_write_tokens,
                     json.dumps(span.attributes, sort_keys=True, default=str),
                 ),
             )
 
     # Promoted to their own columns because the bridge queries on them. Anything
-    # else a caller passes lands in the JSON attributes blob.
-    PROMOTED = ("item_key", "activity", "actor", "value_cents")
+    # else a caller passes lands in the JSON attributes blob. The token fields
+    # are columns for the same reason: the cost report aggregates over them, and
+    # a JSON extract in every cost query would be miserable to read.
+    PROMOTED = (
+        "item_key",
+        "activity",
+        "actor",
+        "value_cents",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+    )
 
     @contextmanager
     def span(
@@ -188,20 +230,6 @@ class SpanStore:
 
     def runs(self) -> list[dict[str, Any]]:
         return [dict(row) for row in self._connection.execute("SELECT * FROM runs ORDER BY started_at")]
-
-    def tool_spans(self, run_id: str | None = None) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM spans WHERE kind = ?"
-        params: list[Any] = [TOOL]
-        if run_id:
-            sql += " AND run_id = ?"
-            params.append(run_id)
-        sql += " ORDER BY started_at, step"
-        rows = []
-        for row in self._connection.execute(sql, params):
-            record = dict(row)
-            record["attributes"] = json.loads(record["attributes"])
-            rows.append(record)
-        return rows
 
     def all_spans(self, run_id: str | None = None) -> list[dict[str, Any]]:
         sql = "SELECT * FROM spans"

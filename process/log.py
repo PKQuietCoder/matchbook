@@ -466,12 +466,22 @@ class EventLogBuilder:
             if extra:
                 log.event_attributes[new_position] = extra
 
-        case_offsets.append(len(order))
+        # The invariant is len(case_offsets) == len(case_ids) + 1, so an empty
+        # log must carry [0] and not [0, 0]. Appending unconditionally gave the
+        # latter, which is harmless today only because nothing reads the last
+        # offset of an empty log.
+        if case_ids:
+            case_offsets.append(len(order))
         log.case_ids = case_ids
         log.case_offsets = case_offsets
+        # The membership set is built ONCE. Written inline in the comprehension
+        # it is rebuilt per candidate, which is quadratic: harmless at 2,000
+        # cases (0.04s) and ~23 minutes at the full log's 251,734. That is the
+        # shape of bug a small fixture hides and a real dataset exposes.
+        kept_cases = set(case_ids)
         log.case_attributes = {
             case_id: attributes
             for case_id, attributes in self._case_attributes.items()
-            if case_id in set(case_ids)
+            if case_id in kept_cases
         }
         return log

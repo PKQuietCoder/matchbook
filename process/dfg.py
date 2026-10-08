@@ -10,8 +10,9 @@ dict of int pairs rather than a graph object per node.
 
 A deliberate choice worth knowing about: durations are recorded per edge as a
 *histogram of log-spaced buckets*, not as a list of every observation. Keeping
-1.6M durations to compute a median costs more memory than the whole log; 48
-buckets per edge give quantiles accurate to within a bucket and cost nothing.
+1.6M durations to compute a median costs more memory than the whole log; 54
+log-spaced buckets per edge cover zero to about 15 years, give quantiles within
+a stated +/-21% relative error, and cost 54 ints per edge.
 """
 
 from __future__ import annotations
@@ -25,8 +26,13 @@ from process.log import EventLog
 
 Edge = tuple[int, int]
 
-# Log-spaced duration buckets: 0s, then ~1s up to ~8 years, 6 buckets per decade.
-_BUCKET_COUNT = 48
+# Log-spaced duration buckets: 0s, then ~1s upward at 6 buckets per decade.
+#
+# 54 buckets reach ~15 years. The first version used 48, which topped out at
+# 1.47 years -- and BPI 2019 spans about two, so the top bucket saturated and
+# every duration beyond 18 months was reported at the same quantile. The cost
+# of the extra six buckets is six ints per edge.
+_BUCKET_COUNT = 54
 _BUCKET_BASE = 10 ** (1 / 6)
 
 

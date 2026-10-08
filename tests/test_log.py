@@ -71,3 +71,30 @@ def test_day_precision_is_carried(tiny_log):
     )
     log = builder.build()
     assert log.event(0)["precision"] == DAY
+
+
+def test_case_offsets_invariant_holds_including_when_empty(tiny_log):
+    """len(case_offsets) == len(case_ids) + 1, always.
+
+    An empty log carried [0, 0] rather than [0], which is harmless only for as
+    long as nothing reads the last offset of an empty log. Invariants that are
+    true "except in the empty case" are the ones that break later.
+    """
+    assert len(tiny_log.case_offsets) == tiny_log.case_count + 1
+
+    empty = tiny_log.select([])
+    assert empty.case_count == 0
+    assert empty.event_count == 0
+    assert len(empty.case_offsets) == 1
+    assert list(empty.traces()) == []
+
+
+def test_every_analysis_tolerates_an_empty_log(tiny_log):
+    """A filter that matches nothing is routine, not exceptional."""
+    from process import config, dfg, rules, variants, viz
+
+    empty = tiny_log.select([])
+    assert dfg.build(empty).edges == {}
+    assert variants.summary(empty)["variants"] == 0
+    assert rules.report(empty, config.load_facts())["total_violations"] == 0
+    assert viz.dfg_to_dot(dfg.build(empty))  # renders, rather than raising

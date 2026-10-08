@@ -29,7 +29,10 @@ MINING_MODULES = [
     "process.cli",
 ]
 
-BLOCKED = ("openai", "openai_agents", "agents", "litellm", "fastapi", "opentelemetry")
+# `anthropic` is here because it is now the agent half's model dependency. The
+# guarantee is only worth anything if it names the package the agent actually
+# imports; leaving a retired one in its place would pass while testing nothing.
+BLOCKED = ("anthropic", "openai", "openai_agents", "agents", "litellm", "fastapi", "opentelemetry")
 
 PROBE = f"""
 import sys

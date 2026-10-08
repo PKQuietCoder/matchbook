@@ -85,6 +85,13 @@ ACTORS = [
 class PinnedItem:
     """A fixture every lecture, screenshot and test can rely on.
 
+    `description` is what the agent sees; `note` is why the fixture exists and
+    must never reach the agent. Using the note as the description -- as this
+    did at first -- puts the expected answer in the model's input: the agent
+    read "price variance outside tolerance; the main demo item" straight off
+    the record it was asked to diagnose. Every evaluation built on it was
+    measuring nothing.
+
     Sized against the real tolerance rule rather than by eye: with
     `looser_of_abs_or_pct` at 50 EUR / 2%, a 3% variance on a 1,000 EUR item is
     *inside* tolerance, so a demo breach has to be a larger item. Writing these
@@ -99,6 +106,7 @@ class PinnedItem:
     invoice_value_cents: int | None
     payment_blocked: bool
     deleted: bool
+    description: str
     note: str
 
 
@@ -108,27 +116,34 @@ def pinned_items(facts: dict[str, Any]) -> list[PinnedItem]:
             # 4,000 EUR received, 4,120 invoiced: a 120 EUR variance against an
             # allowance of max(50, 2% of 4,000 = 80) = 80. A real breach.
             "4507001234_00010", THREE_WAY_AFTER, 400_000, 400_000, 412_000, True, False,
+            "Industrial floor coating, 200 L drum x10",
             "price variance outside tolerance; the main demo item",
         ),
         PinnedItem(
             # Same purchase order, one keystroke away. Acting on this item when
             # the conversation is about _00010 is a failure mode that only the
-            # object-centric view detects.
+            # object-centric view detects. Note the description is deliberately
+            # PLAUSIBLE and similar to its sibling's: a description that said
+            # "the trap item" would make the ambiguity trivially resolvable.
             "4507001234_00020", THREE_WAY_AFTER, 150_000, None, None, False, False,
+            "Industrial floor coating, primer, 20 L pail x10",
             "same PO as the demo item, no receipt and no invoice: the trap item",
         ),
         PinnedItem(
             "4507002001_00010", TWO_WAY, 60_000, None, 60_000, False, False,
+            "Annual calibration service, flow meters",
             "two-way match, no goods receipt expected, clean: the contrast case",
         ),
         PinnedItem(
             "4507009999_00010", THREE_WAY_AFTER, 90_000, 90_000, 90_000, False, True,
+            "Conveyor belt drive, 1.5 kW",
             "deleted item that still carries an invoice",
         ),
         PinnedItem(
             # Above clearing_auto_approve_limit_eur, so an otherwise clean
             # clearing must queue for a controller.
             "4507003300_00010", THREE_WAY_AFTER, 1_840_000, 1_840_000, 1_840_000, False, False,
+            "Pallet racking system, 24 bays, installed",
             "clean match above the clearing limit; must queue for approval",
         ),
     ]
@@ -167,6 +182,18 @@ def _stamp(moment: date, hour: int = 9, minute: int = 0) -> str:
     return datetime(
         moment.year, moment.month, moment.day, hour, minute, tzinfo=timezone.utc
     ).isoformat(timespec="seconds")
+
+
+def _non_releaser(rng: random.Random, buyers: list[tuple], releaser: tuple) -> str:
+    """Pick a buyer other than the one who released the order.
+
+    Receipting an order you released is a segregation-of-duties conflict
+    (facts.yaml `conflicting_pairs`). Seeding the world with that conflict in
+    most cases would make the baseline violation rate an artefact of the
+    generator rather than a property worth measuring.
+    """
+    candidates = [actor for actor in buyers if actor[0] != releaser[0]] or buyers
+    return rng.choice(candidates)[0]
 
 
 def _pick_flow(rng: random.Random) -> str:
@@ -238,7 +265,7 @@ def generate_world(
             created = world_asof - timedelta(days=60)
             items.append(
                 (
-                    item.item_key, po_number, item_no, item.note, item.flow,
+                    item.item_key, po_number, item_no, item.description, item.flow,
                     "Service" if item.flow == CONSIGNMENT else "Standard",
                     SPEND_AREAS[0], 10.0, item.po_value_cents,
                     1 if item.payment_blocked else 0,
@@ -314,11 +341,17 @@ def generate_world(
                     receipt_value = value
                     when = released + timedelta(days=rng.randint(2, 40))
                     gr_id = f"GR-{item_key}"
+                    # ONE draw, used for both the state row and the history
+                    # event. Drawing twice -- as this did -- recorded the
+                    # receipt against one buyer and attributed the event to
+                    # another, so the world contradicted its own history and
+                    # every segregation-of-duties check read the wrong actor.
+                    receiver = _non_releaser(rng, buyers, buyer)
                     receipts.append(
-                        (gr_id, item_key, quantity, receipt_value, "", _stamp(when), rng.choice(buyers)[0], None)
+                        (gr_id, item_key, quantity, receipt_value, "", _stamp(when), receiver, None)
                     )
                     record(item_key, SERVICE_ENTRY if is_service else GOODS_RECEIPT,
-                           rng.choice(buyers)[0], receipt_value, when)
+                           receiver, receipt_value, when)
 
                 if rng.random() < 0.78:
                     # A minority of invoices come in above the matched value,

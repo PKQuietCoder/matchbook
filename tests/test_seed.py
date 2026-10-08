@@ -62,15 +62,39 @@ def test_the_large_item_queues_and_the_small_one_does_not(world):
     assert not controls.clearing_needs_approval(60_000, facts)
 
 
-def test_flow_strings_match_the_real_logs_item_categories(snapshot_log):
+def test_flow_strings_partition_the_real_logs_item_categories(snapshot_log):
+    """Every flow the log contains must be declared in exactly one bucket.
+
+    The three buckets have to PARTITION the observed flows: a flow in none of
+    them is silently exempt from every control, and a flow in two is ambiguous.
+    This test caught Consignment being moved between buckets, which is exactly
+    the drift it exists for.
+    """
     facts = config.load_facts()
-    declared = set(facts["gr_required_flows"]) | set(facts["gr_not_required_flows"])
+    buckets = {
+        "gr_required_flows": set(facts["gr_required_flows"]),
+        "gr_not_required_flows": set(facts["gr_not_required_flows"]),
+        "invoice_matching_not_applicable_flows": set(
+            facts["invoice_matching_not_applicable_flows"]
+        ),
+    }
     observed = {
         snapshot_log.case_attributes[c]["Item Category"]
         for c in snapshot_log.case_ids
         if "Item Category" in snapshot_log.case_attributes.get(c, {})
     }
-    assert declared == observed, f"facts.yaml flows drifted from the log: {declared ^ observed}"
+
+    declared = set().union(*buckets.values())
+    assert declared == observed, (
+        f"facts.yaml flows drifted from the log; symmetric difference: {declared ^ observed}"
+    )
+
+    for name, first in buckets.items():
+        for other_name, second in buckets.items():
+            if name < other_name:
+                assert not (first & second), (
+                    f"{name} and {other_name} both claim {first & second}"
+                )
 
 
 def test_policy_corpus_agrees_with_the_facts_sheet():

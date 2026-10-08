@@ -69,6 +69,14 @@ gr_required_flows:
   - "3-way match, invoice after GR"
 gr_not_required_flows:
   - "2-way match"
+
+# Consignment is NOT a 2-way match with the receipt step removed. BPI 2019's
+# own documentation is explicit: consignment items carry no invoices at PO
+# level, because settlement happens in a separate process. Listing it as
+# "GR not required" made the invoice-matching controls treat a consignment item
+# as a 2-way match and compare values that the process never intended to
+# compare. It is excluded from invoice matching entirely instead.
+invoice_matching_not_applicable_flows:
   - "Consignment"
 
 # Observed case shares in the full log, for weighting sample-based aggregates.

@@ -1,0 +1,36 @@
+The files in this directory are a derived subset of third-party data,
+redistributed under Creative Commons Attribution 4.0 International
+(CC BY 4.0). CC BY 4.0 requires attribution, a link to the licence, and an
+indication of changes; all three are below, as the licence obliges.
+
+Dataset: BPI Challenge 2019
+Author:  Boudewijn van Dongen
+Source:  4TU.ResearchData, version 1, 2019
+DOI:     10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1
+Licence: CC BY 4.0 -- https://creativecommons.org/licenses/by/4.0/
+
+Cite as:
+  van Dongen, Boudewijn (2019): BPI Challenge 2019. Version 1.
+  4TU.ResearchData. dataset.
+  https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1
+
+CHANGES MADE TO THE ORIGINAL (required by CC BY 4.0 section 3(a)(1)(B)):
+
+  1. Subsetting. 2,117 of 251,734 cases were selected, by the rank of
+     sha256("matchbook-bpic19-snapshot-v1" + case_id) within each Item
+     Category stratum, allocated proportionally with a floor of 120 cases per
+     stratum. See SAMPLE.md and sample-manifest.json; logs/sample.py
+     reproduces the selection exactly.
+  2. Format conversion. IEEE-XES XML to CSV, gzipped, split into an event
+     file and a case-attribute file.
+  3. Monetary representation. "Cumulative net worth (EUR)" is carried as
+     integer cents in value_cents. Values in the original are anonymised by a
+     linear translation and are not real currency.
+  4. Event order preserved. The source file's own event order is retained, so
+     the effect of any later tie-breaking assumption remains measurable.
+
+NO FIELD VALUE WAS ALTERED. The subset is a selection and a re-encoding, not
+a modification of the data itself.
+
+The attribution above must travel with any further redistribution of these
+files or of data derived from them.

@@ -72,6 +72,50 @@ def _microseconds(stamp: str) -> int:
     return datetime.fromisoformat(stamp).microsecond
 
 
+def item_flows(item_keys: set[str]) -> dict[str, dict[str, Any]]:
+    """Look up each item's business attributes from the world.
+
+    Without this the agent's log carries no `Item Category`, and every control
+    rule scoped by matching flow -- CTRL-GR among them, the most important one
+    -- silently has an in-scope population of zero. The claim that one rule
+    definition judges the humans and the agent alike is only true if the
+    agent's log carries the attributes those rules read.
+
+    The world is the source, not the span: the flow is a property of the
+    purchase-order item, not of the call that touched it.
+    """
+    if not item_keys:
+        return {}
+    try:
+        from agent import db
+    except ImportError:  # the mining half must not require the agent package
+        return {}
+    found: dict[str, dict[str, Any]] = {}
+    try:
+        with db.connection() as conn:
+            for item_key in sorted(item_keys):
+                item = db.get_item(conn, item_key)
+                if item is None:
+                    continue
+                found[item_key] = {
+                    "Item Category": item["flow"],
+                    "Item Type": item["item_type"],
+                    "Vendor": item["vendor_id"],
+                    "Company": item["company_code"],
+                    "Purchasing Document": item["po_number"],
+                    "Item": item["item_no"],
+                }
+    except Exception as exc:  # a missing world is not a reason to lose the log
+        print(
+            f"warning: could not read item attributes from the world ({exc}); the agent's "
+            "log will carry no Item Category, and flow-scoped control rules will report "
+            "themselves unevaluable rather than silently finding nothing.",
+            file=sys.stderr,
+        )
+        return {}
+    return found
+
+
 def _outcome(span: dict[str, Any]) -> str:
     """What became of a write attempt: done, queued, refused, or paused."""
     result = span["attributes"].get("result") or {}
@@ -108,8 +152,11 @@ def convert(
     )
 
     runs = {row["run_id"]: row for row in span_store.runs()}
+    spans = span_store.all_spans(run_id)
+    # Resolve the business attributes once, not per span.
+    flows = item_flows({span["item_key"] for span in spans if span["item_key"]})
     kept = 0
-    for span in span_store.all_spans(run_id):
+    for span in spans:
         item_key = span.get("item_key")
         name = span["name"]
         attributes = span["attributes"]
@@ -144,6 +191,7 @@ def convert(
         builder.add_case_attributes(
             case_id,
             {
+                **flows.get(item_key or "", {}),
                 "source": "agent",
                 "actor_id": run.get("actor_id", ""),
                 "role": run.get("role", ""),

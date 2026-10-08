@@ -133,10 +133,8 @@ def control_findings(store: SpanStore, run_id: str) -> list[dict[str, Any]]:
     )
     if not log.case_count:
         return []
-    return [
-        violation.as_record()
-        for violation in rules.evaluate(log, config.load_facts())
-    ]
+    violations, _inapplicable = rules.evaluate(log, config.load_facts())
+    return [violation.as_record() for violation in violations]
 
 
 def normalize_all(store: SpanStore) -> list[dict[str, Any]]:

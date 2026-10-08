@@ -55,6 +55,27 @@ RECEIPT_ACTIVITIES = (GOODS_RECEIPT, SERVICE_ENTRY)
 FLOW_ATTRIBUTE = "Item Category"
 
 
+class NotApplicable(Exception):
+    """Raised by a rule that cannot be evaluated on the log it was given.
+
+    This exists because of a mistake worth keeping a guard against. The
+    value-match rule below was first written to compare the value recorded at
+    the goods receipt against the value recorded at clearing, and it reported
+    zero violations on BPI 2019 -- which was read as a finding. It was not. The
+    log carries ONE case-level value replicated onto every event, so the
+    subtraction is structurally zero and the rule could never fire.
+
+    A rule that cannot fire must say so. Reporting "0 violations" for a rule
+    whose inputs are absent is worse than reporting nothing, because a zero
+    reads as evidence of compliance.
+    """
+
+    def __init__(self, rule_id: str, reason: str) -> None:
+        super().__init__(f"{rule_id} is not applicable: {reason}")
+        self.rule_id = rule_id
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class Violation:
     rule_id: str
@@ -115,6 +136,33 @@ class CaseFacts:
     def resource_at(self, index: int) -> str:
         return self.resources[index]
 
+    @property
+    def has_distinct_values(self) -> bool:
+        """Does this case record more than one distinct value across its events?
+
+        The probe that tells a value-comparing rule whether its inputs exist.
+        A log with one value per case cannot support an invoice-to-receipt
+        comparison, however the arithmetic is arranged.
+        """
+        return len({value for value in self.values if value}) > 1
+
+    def receipt_total_cents(self) -> int | None:
+        """Total value across receipt events, or None if there are none.
+
+        A total rather than the first receipt, so a legitimate second delivery
+        is not reported as a price variance.
+        """
+        indices = self.indices(*RECEIPT_ACTIVITIES)
+        if not indices:
+            return None
+        return sum(self.values[index] for index in indices)
+
+    def invoice_value_cents(self) -> int | None:
+        indices = self.indices(INVOICE_RECEIPT)
+        if not indices:
+            return None
+        return sum(self.values[index] for index in indices)
+
 
 def case_facts(log: EventLog, trace: Trace) -> CaseFacts:
     return CaseFacts(
@@ -131,6 +179,18 @@ def case_facts(log: EventLog, trace: Trace) -> CaseFacts:
 # ---------------------------------------------------------------------------
 # The rules.
 
+def _invoice_matching_applies(facts: CaseFacts, policy: dict[str, Any]) -> bool:
+    """Is this item's flow subject to PO-level invoice matching at all?
+
+    Consignment is not: settlement happens outside the purchase order, so there
+    is no PO-level invoice to match. Treating it as a flow with the goods
+    receipt merely optional -- the first version of facts.yaml did -- makes
+    every consignment item a candidate for controls that do not apply to it.
+    """
+    excluded = set(policy.get("invoice_matching_not_applicable_flows") or ())
+    return facts.flow not in excluded
+
+
 def no_clearing_before_receipt(facts: CaseFacts, policy: dict[str, Any]) -> Iterator[Violation]:
     """CTRL-GR: on a GR-required flow, nothing clears before receipt evidence.
 
@@ -139,6 +199,8 @@ def no_clearing_before_receipt(facts: CaseFacts, policy: dict[str, Any]) -> Iter
     2-way-match or consignment item legitimately has no goods receipt, and
     flagging those would make the rule noise.
     """
+    if not _invoice_matching_applies(facts, policy):
+        return
     if facts.flow not in policy["gr_required_flows"]:
         return
     clearing = facts.first_index(CLEAR_INVOICE)
@@ -170,29 +232,46 @@ def no_clearing_before_receipt(facts: CaseFacts, policy: dict[str, Any]) -> Iter
         )
 
 
-def three_way_match_tolerance(facts: CaseFacts, policy: dict[str, Any]) -> Iterator[Violation]:
-    """CTRL-TOLERANCE: the cleared value must match the receipt value.
+def value_match_tolerance(facts: CaseFacts, policy: dict[str, Any]) -> Iterator[Violation]:
+    """CTRL-TOLERANCE: the cleared value must match the received value.
 
-    BPI 2019 records a running `Cumulative net worth`, so the comparison is
-    between the value at receipt and the value at clearing. The allowance is
-    the looser of the absolute and percentage limits in facts.yaml -- the same
-    arithmetic the agent's `get_three_way_match` tool must use.
+    Requires the log to record the receipt value and the invoice value as
+    DISTINCT quantities. That is true of the synthetic and agent logs, where we
+    control the instrumentation, and false of BPI 2019, which carries a single
+    case-level value replicated onto every event. On such a log this raises
+    :class:`NotApplicable` rather than returning nothing, because a silent zero
+    would read as a clean bill of health.
 
-    Note the honest limit: these values are anonymized by a linear translation,
-    so the *scale* is not real currency. The rule is still meaningful because
-    it compares two values from the same translated scale.
+    Where the values are distinct, the allowance is the looser of the absolute
+    and percentage limits in facts.yaml -- the same arithmetic the agent's
+    `get_three_way_match` tool uses, asserted identical by a test.
+
+    A second trap this rule has to avoid: a case with more than one goods
+    receipt legitimately carries a larger total at clearing than at the first
+    receipt. Comparing the first receipt against the clearing would report a
+    partial delivery as a price variance. The comparison therefore uses the
+    receipt total across all uncancelled receipts.
     """
+    if not _invoice_matching_applies(facts, policy):
+        return
     if facts.flow not in policy["gr_required_flows"]:
         return
-    clearing = facts.first_index(CLEAR_INVOICE)
-    receipt = facts.first_index(*RECEIPT_ACTIVITIES)
-    if clearing is None or receipt is None:
+    receipt_value = facts.receipt_total_cents()
+    invoice_value = facts.invoice_value_cents()
+    if receipt_value is None or invoice_value is None:
         return
-    receipt_value = facts.values[receipt]
-    cleared_value = facts.values[clearing]
-    if receipt_value <= 0:
-        return
-    variance = cleared_value - receipt_value
+    if not facts.has_distinct_values:
+        raise NotApplicable(
+            "CTRL-TOLERANCE",
+            "this log records a single value per case rather than separate goods-receipt "
+            "and invoice values, so an invoice-to-receipt variance cannot be computed from "
+            "it. BPI 2019 is such a log: its 'Cumulative net worth (EUR)' is a case-level "
+            "figure repeated on every event. Evaluate this control on a log whose "
+            "instrumentation records both values (the synthetic and agent logs do), or use "
+            "the agent's get_three_way_match tool, which reads them from the world.",
+        )
+
+    variance = invoice_value - receipt_value
     if variance <= 0:
         return
     allowance = max(
@@ -207,13 +286,14 @@ def three_way_match_tolerance(facts: CaseFacts, policy: dict[str, Any]) -> Itera
                 f"cleared {variance / 100:,.2f} above the received value, outside the "
                 f"{policy['tolerance_pct']}% / {policy['tolerance_abs_eur']} allowance"
             ),
-            at_seq=clearing,
+            at_seq=facts.first_index(CLEAR_INVOICE),
             order_assumed=facts.tie_broken,
             detail={
                 "receipt_value_eur": receipt_value / 100,
-                "cleared_value_eur": cleared_value / 100,
+                "invoice_value_eur": invoice_value / 100,
                 "variance_eur": variance / 100,
                 "allowance_eur": allowance / 100,
+                "receipt_events": len(facts.indices(*RECEIPT_ACTIVITIES)),
             },
         )
 
@@ -299,7 +379,7 @@ def no_activity_after_deletion(facts: CaseFacts, policy: dict[str, Any]) -> Iter
 
 RULES: dict[str, Callable[[CaseFacts, dict[str, Any]], Iterator[Violation]]] = {
     "CTRL-GR": no_clearing_before_receipt,
-    "CTRL-TOLERANCE": three_way_match_tolerance,
+    "CTRL-TOLERANCE": value_match_tolerance,
     "CTRL-SOD": segregation_of_duties,
     "CTRL-BLOCK": payment_block_discipline,
     "CTRL-DELETED": no_activity_after_deletion,
@@ -307,7 +387,7 @@ RULES: dict[str, Callable[[CaseFacts, dict[str, Any]], Iterator[Violation]]] = {
 
 RULE_TITLES = {
     "CTRL-GR": "No clearing before goods receipt on a GR-required flow",
-    "CTRL-TOLERANCE": "Cleared value within the three-way-match tolerance",
+    "CTRL-TOLERANCE": "Invoice value within the three-way-match tolerance of the receipt value",
     "CTRL-SOD": "Segregation of duties across conflicting activity pairs",
     "CTRL-BLOCK": "A removed payment block was set first",
     "CTRL-DELETED": "No financial activity after item deletion",
@@ -319,18 +399,30 @@ def evaluate(
     policy: dict[str, Any],
     *,
     rule_ids: Iterable[str] | None = None,
-) -> list[Violation]:
-    """Run the selected rules over every case."""
+) -> tuple[list[Violation], dict[str, str]]:
+    """Run the selected rules over every case.
+
+    Returns the violations found, and a map of rule id -> why that rule could
+    not be evaluated on this log. A rule in the second map contributed no
+    violations because it could not run, which is a different statement from
+    "it ran and found none".
+    """
     selected = list(rule_ids) if rule_ids else list(RULES)
     unknown = [rule_id for rule_id in selected if rule_id not in RULES]
     if unknown:
         raise KeyError(f"unknown rule(s): {', '.join(unknown)}; known: {', '.join(RULES)}")
     found: list[Violation] = []
+    inapplicable: dict[str, str] = {}
     for trace in log.traces():
         facts = case_facts(log, trace)
         for rule_id in selected:
-            found.extend(RULES[rule_id](facts, policy))
-    return found
+            if rule_id in inapplicable:
+                continue
+            try:
+                found.extend(RULES[rule_id](facts, policy))
+            except NotApplicable as exc:
+                inapplicable[exc.rule_id] = exc.reason
+    return found, inapplicable
 
 
 def report(log: EventLog, policy: dict[str, Any], **kwargs) -> dict[str, Any]:
@@ -340,7 +432,7 @@ def report(log: EventLog, policy: dict[str, Any], **kwargs) -> dict[str, Any]:
     flows, so "412 violations" means nothing without "out of 1,877 in-scope
     cases". The scope is reported with the rate.
     """
-    violations = evaluate(log, policy, **kwargs)
+    violations, inapplicable = evaluate(log, policy, **kwargs)
     gr_required = set(policy["gr_required_flows"])
     in_scope_gr = sum(
         1
@@ -365,19 +457,30 @@ def report(log: EventLog, policy: dict[str, Any], **kwargs) -> dict[str, Any]:
             "known to be complete (the synthetic and agent logs)."
         ),
         "CTRL-TOLERANCE": (
-            "Monetary values in BPI 2019 are anonymized by a linear translation, so the "
-            "scale is not real currency. The comparison is still valid because both "
-            "values come from the same translated scale."
+            "Where this rule does run, remember that monetary values in BPI 2019 are "
+            "anonymised by a linear translation, so the scale is not real currency; a "
+            "variance is meaningful relative to the same translated scale, an absolute "
+            "EUR threshold is not."
         ),
     }
     per_rule: dict[str, Any] = {}
     for rule_id in RULES:
+        if rule_id in inapplicable:
+            # Never report a count for a rule that could not run. A zero here
+            # would be read as compliance.
+            per_rule[rule_id] = {
+                "title": RULE_TITLES[rule_id],
+                "evaluated": False,
+                "not_applicable_because": inapplicable[rule_id],
+            }
+            continue
         matching = [violation for violation in violations if violation.rule_id == rule_id]
         cases = {violation.case_id for violation in matching}
         assumed = {violation.case_id for violation in matching if violation.order_assumed}
         denominator = scope.get(rule_id, log.case_count) or 1
         per_rule[rule_id] = {
             "title": RULE_TITLES[rule_id],
+            "evaluated": True,
             "violations": len(matching),
             "cases": len(cases),
             "in_scope_cases": scope.get(rule_id, log.case_count),
@@ -393,4 +496,5 @@ def report(log: EventLog, policy: dict[str, Any], **kwargs) -> dict[str, Any]:
         "events": log.event_count,
         "rules": per_rule,
         "total_violations": len(violations),
+        "rules_not_evaluated": sorted(inapplicable),
     }

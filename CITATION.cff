@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: >-
+  If you use Matchbook, please cite it. If you use the event data it
+  redistributes, cite the datasets as well -- their licences require it.
+title: "Matchbook: agentic purchase-to-pay process mining on open data"
+authors:
+  - family-names: Mishra
+    given-names: Pradyumna
+type: software
+references:
+  - type: dataset
+    title: "BPI Challenge 2019"
+    authors:
+      - family-names: van Dongen
+        given-names: Boudewijn
+    year: 2019
+    doi: 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1
+    publisher:
+      name: 4TU.ResearchData
+    license: CC-BY-4.0
+    notes: "Redistributed as a derived subset in logs/snapshot/."
+  - type: dataset
+    title: "Helpdesk"
+    authors:
+      - family-names: Verenich
+        given-names: Ilya
+    year: 2016
+    doi: 10.17632/39bp3vv62t.1
+    publisher:
+      name: Mendeley Data
+    license: MIT
+    notes: "Redistributed verbatim in logs/helpdesk/."

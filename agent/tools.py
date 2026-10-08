@@ -204,15 +204,26 @@ def record_goods_receipt(
 def clear_invoice(ctx: AuthContext, item_key: str, note: str = "") -> dict[str, Any]:
     """Clear an item's open invoice, or queue it for a controller.
 
-    The check order is fixed by SPEC TOOL-6 and must not be reordered: kill
-    switch, authorization scope, amount against the caller's limit, item not
-    deleted, an unpaid invoice exists, no payment block, the three-way match
-    within tolerance, and finally per-case segregation of duties.
+    The check order is fixed by SPEC TOOL-6 and must not be reordered:
 
-    The order is not arbitrary. Checking the amount before the controls means a
-    large but *correct* clearing queues for a human rather than being refused,
-    and a small but *incorrect* one is refused rather than queued -- a human's
-    time goes to decisions, not to rubber-stamping.
+      1. kill switch
+      2. authorization scope and role
+      3. item not deleted
+      4. an unpaid invoice exists and is not already queued
+      5. no payment block
+      6. receipt evidence where the flow requires it
+      7. within tolerance
+      8. per-case segregation of duties
+      9. amount at or below the caller's limit
+
+    Checks 1-6 refuse; 7-9 queue for a controller.
+
+    The amount is deliberately LAST. Checking it earlier -- as an earlier
+    version of this specification said to -- would queue an above-limit invoice
+    that is also blocked or missing its goods receipt, handing a controller a
+    decision nobody can make, because the block's reason is still unresolved.
+    Refusing first and queuing only what is otherwise clearable sends a human
+    the genuine judgement calls and nothing else.
     """
     paused = kill_switch("clear_invoice")
     if paused:

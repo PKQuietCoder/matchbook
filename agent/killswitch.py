@@ -24,15 +24,26 @@ READONLY = "readonly"
 
 LEVELS = (OFF, CLEARING, PAYMENTS, READONLY)
 
-WRITE_TOOLS = frozenset(
-    {"record_goods_receipt", "record_invoice_receipt", "clear_invoice",
-     "set_payment_block", "remove_payment_block"}
+# The write tools that EXIST today. Listing tools that are merely planned
+# makes the ladder look broader than it is: `MB_KILL_SWITCH=payments` appeared
+# to pause remove_payment_block, a tool with no implementation, so the rung
+# read as a stronger guarantee than it gave. A test asserts this set matches
+# the tool registry.
+WRITE_TOOLS = frozenset({"record_goods_receipt", "clear_invoice"})
+
+# Tools these rungs will also pause once they exist (SPEC lists five tools for
+# this milestone; invoice recording and payment-block changes come later).
+# Kept so the ladder's intent is documented, and deliberately NOT folded into
+# WRITE_TOOLS, where it would overstate what is enforced.
+PLANNED_WRITE_TOOLS = frozenset(
+    {"record_invoice_receipt", "set_payment_block", "remove_payment_block"}
 )
 
 PAUSED_BY_LEVEL: dict[str, frozenset[str]] = {
     OFF: frozenset(),
     CLEARING: frozenset({"clear_invoice"}),
-    PAYMENTS: frozenset({"clear_invoice", "remove_payment_block"}),
+    # remove_payment_block belongs on this rung and will be added with the tool.
+    PAYMENTS: frozenset({"clear_invoice"}),
     READONLY: WRITE_TOOLS,
 }
 

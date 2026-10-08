@@ -255,7 +255,8 @@ def load(path: str | Path, log_id: str) -> EventLog:
             if row["attrs"]:
                 log.event_attributes[position] = json.loads(row["attrs"])
             position += 1
-        offsets.append(position)
+        if case_ids:
+            offsets.append(position)
         log.case_offsets = offsets
         return log
     finally:

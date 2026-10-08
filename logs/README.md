@@ -65,6 +65,31 @@ Confirmed as described:
 - **The tie-break is not cosmetic.** Applying the declared `activity_rank` from `facts.yaml` collapses the snapshot from **378 variants to 373** and changes the event sequence of **76 cases**. A discovered model or a fitness number is therefore partly a consequence of that declared ordering, and a result should say which ordering it used. Reproduce with `python -m process ingest logs/snapshot/bpic19-sample-events.csv.gz --log-id bpic19-sample --sensitivity`; the committed snapshot deliberately preserves the source file's event order so the baseline survives.
 - **1,975 vendors**; the four matching flows split 87.8% / 6.0% / 5.8% / 0.4% (`3-way match, invoice before GR` / `after GR` / `Consignment` / `2-way match`). The flow strings above are the exact `Item Category` values and are what `facts.yaml` must match.
 
+#### `Cumulative net worth (EUR)` does not mean what it sounds like
+
+Measured, because it matters: the field is a **case-level** figure repeated on
+every event, not a running total that differs between the goods receipt and the
+invoice. Over 40,000 cases it varies across events in only 1.92% of them, and
+where it does vary the values are exact multiples (`[549, 1098]`,
+`[1009, 2018]`) -- the signature of a second receipt or invoice, not of a price
+variance. It also decreases in some long cases, so it is not even monotonic.
+
+Consequence: **a three-way value match is not computable from this log.** Any
+rule that subtracts one event's value from another's is comparing a number with
+itself, and will report zero violations no matter what the data says.
+`process/rules.py` therefore declares `CTRL-TOLERANCE` *not applicable* here
+rather than reporting a zero that reads as compliance.
+
+#### The authored controls are ours, applied retrospectively
+
+`CTRL-GR`, `CTRL-SOD` and `CTRL-BLOCK` encode controls written in `facts.yaml`
+for the fictional Meridian Industrial Supply. They are **not** the coatings
+company's own policies, which are not published. So a violation rate measured
+on BPI 2019 says "this many cases would breach *our* control", not "this company
+broke its own rules". Keep that distinction in any customer-facing material: the
+numbers are a demonstration of the method, not an audit finding about a real
+organisation.
+
 ### Known data-quality traits -- curriculum, not defects to hide
 
 Same-minute ties (see above); events for vendor-side activities with no vendor
@@ -127,7 +152,7 @@ Recorded with reasons so this decision is not quietly reversed later.
 | Dataset | License | Reason |
 | --- | --- | --- |
 | **All five BPI Challenge 2020 logs** (Domestic Declarations, International Declarations, Request For Payment, Prepaid Travel Costs, Travel Permit Data) | **CC BY-NC 4.0** | Non-commercial. Verified on the Domestic Declarations landing page. Painful, because the travel-reimbursement approval chain is otherwise the ideal teaching process. |
-| **CRMArena / CRMArena-Pro** | CC BY-NC | Non-commercial. |
+| **CRMArena / CRMArena-Pro** (Salesforce) | **CC BY-NC 4.0** on *both* code and data | Non-commercial. Verified against the repo's `LICENSE.txt` ("for NonCommercial purposes only") and the HuggingFace dataset card (`license: cc-by-nc-4.0`). Note the oddity that a CC licence is applied to the code as well, which makes it doubly unusable. Its synthetic-data method -- 21 latent variables driving interconnected records -- is worth reading even though the artifact cannot be shipped. |
 | BPI 2012, 2013, 2014, 2015, 2017; Sepsis Cases; Road Traffic Fine Management; Hospital Billing; WABO | legacy **"4TU General Terms of Use"** (`https://doi.org/10.4121/resource:terms_of_use`) | Grants download and analysis but **no explicit redistribution or commercial grant**; only the *metadata* is CC0. Reference by DOI in prose if useful; never bundle the file, and never build a paid demo on one. |
 
 A note on why this matters more than it looks: the canonical teaching logs are

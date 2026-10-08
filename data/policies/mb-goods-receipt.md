@@ -4,7 +4,7 @@ title: When a goods receipt is required
 audience: all
 facts_used:
   gr_required_flows: ['3-way match, invoice before GR', '3-way match, invoice after GR']
-  gr_not_required_flows: ['2-way match', 'Consignment']
+  gr_not_required_flows: ['2-way match']
   gr_quantity_tolerance_pct: 5.0
 ---
 
@@ -21,7 +21,6 @@ Receipt evidence **is** required for:
 Receipt evidence is **not** required for:
 
 - 2-way match
-- Consignment
 
 For a service purchase, a service entry sheet is receipt evidence and is treated
 exactly as a goods receipt.

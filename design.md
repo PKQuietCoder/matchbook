@@ -314,3 +314,95 @@ reused from Oakline; the four sources of run-to-run variability (k repeats,
 latitude designed into the policy, dimension-driven scenarios, free-form chat);
 local SQLite span capture with no Docker; and the dataset exclusion list, which
 this design extends with verified license findings.
+
+---
+
+## Corrections after milestone 1
+
+A review of the milestone-1 code against the data and the specification found
+the following. They are recorded rather than quietly patched, because several
+of them are the kind of mistake that reads as a result.
+
+### Wrong, and reported to the user as a finding
+
+**The tolerance control could never fire, and its zero was mistaken for
+compliance.** `CTRL-TOLERANCE` subtracted the value recorded at the goods
+receipt from the value recorded at clearing. BPI 2019 carries a single
+case-level figure (`Cumulative net worth (EUR)`) repeated on every event, so
+the subtraction is structurally zero: measured over 40,000 cases the value
+varies across events in 1.92% of them, and where it varies the values are exact
+multiples (`[549, 1098]`, `[1009, 2018]`) — a second receipt, not a price
+variance. In some long cases it decreases, so it is not even monotonic. Two
+consequences: the rule was vacuous, and on a sample containing multi-receipt
+cases it would have reported legitimate partial deliveries as tolerance
+breaches. Rules can now raise `NotApplicable`, and a rule whose inputs are
+absent declines to report rather than returning a clean zero. The rewritten
+rule compares the receipt *total* against the invoice total, so a split
+delivery is not a variance, and it runs normally on the synthetic and agent
+logs where both values are recorded.
+
+**The specification and the implementation disagreed about a money path.**
+SPEC TOOL-6 said `clear_invoice` checks the amount third; the code checks it
+last; and the docstring argued for the spec's order while the code did the
+opposite. The implemented order is the right one — checking the amount earlier
+queues an above-limit invoice that is also blocked or missing its goods
+receipt, handing a controller a decision nobody can make — so the spec and the
+docstring were corrected to match the code, and the order is now pinned by a
+test instead of by prose.
+
+### Would have invalidated evaluations built on it
+
+**The pinned fixtures leaked their expected answer into the agent's input.**
+Each pinned item used its fixture note as its item description, so the agent
+asked to diagnose `4507001234_00010` read `"price variance outside tolerance;
+the main demo item"` straight off the record. Descriptions are now plausible
+and, for the multi-item trap, deliberately similar to the sibling's.
+
+**The agent's log carried no `Item Category`,** so every flow-scoped control —
+`CTRL-GR` among them, the most important one — had an in-scope population of
+zero and silently found nothing. The bridge now resolves each item's business
+attributes from the world, which is what makes "one rule definition judges the
+humans and the agent alike" true rather than aspirational.
+
+**A taxonomy entry cited a compliant run as a failure.**
+`premature_success_claim` listed `above_limit` as an example; that run queues
+the clearing and says "It has not been paid", which is exactly correct. A
+taxonomy that mislabels a compliant run poisons every label and judge built on
+it. It is now recorded as a counter-example, and the genuinely distinct mode it
+was confused with (`queued_reported_as_done`) is its own entry.
+
+### Would have broken on the full log
+
+**A quadratic in `EventLogBuilder.build()`.** A membership set was rebuilt per
+candidate inside a comprehension: 0.045s at 2,000 cases, 79s at 60,000, and
+roughly 23 minutes at the full log's 251,734 — directly contradicting the claim
+that the columnar design makes the full log tractable. `tests/test_scale.py`
+now fails if doubling the case count takes more than 3x longer, and that guard
+was checked against the reintroduced bug (it reported 6.1x).
+
+**Duration buckets topped out below the log's own span.** 48 log-spaced buckets
+reach 1.47 years; BPI 2019 spans about two, so the top bucket saturated and
+every duration beyond 18 months was reported at the same quantile. Now 54
+buckets, reaching about 15 years.
+
+### Compliance, in a repo whose premise is compliance
+
+**The committed MIT data shipped without the notice MIT requires.** The Helpdesk
+log was redistributed with no copy of its licence or copyright notice, which the
+MIT terms oblige. Added as `logs/helpdesk/LICENSE`. **The CC BY 4.0 subset had
+its attribution only in `NOTICE` and `SAMPLE.md`;** it now also carries
+`logs/snapshot/LICENSE` with the licence link and the explicit statement of
+changes that CC BY 4.0 §3(a)(1)(B) requires. **The repository stated no licence
+of its own,** so a student cloning it had no rights and no way to know; `LICENSE`
+now states the position and flags the choice as pending and reversible.
+
+### Smaller, but misleading
+
+- The kill switch named three tools that do not exist, so `MB_KILL_SWITCH=payments` appeared to pause `remove_payment_block` and read as a stronger guarantee than it gave. The enforced set is now the real tools, with the planned ones documented separately and a test asserting the distinction.
+- `facts.yaml` filed Consignment under "goods receipt not required", which made the matching controls treat it as a 2-way match. BPI 2019's documentation is explicit that consignment items carry no PO-level invoice at all; they are now excluded from invoice matching, and a test asserts the three flow buckets *partition* the observed categories.
+- The `agent` optional-dependency group declared five packages and the `fast` group declared numpy, and **none of the six was imported anywhere**. Both removed; a dependency is declared when something imports it.
+- `server` was listed as a wheel package before it existed or had an `__init__.py`. Removed, along with seven empty scaffolding directories that existed locally but not in a clone.
+- `--sensitivity` lost the XES progress line in a refactor, leaving the 728 MB path silent for minutes.
+- `process/__init__.py` claimed the core was importable with the standard library alone; `process.config` needs PyYAML.
+- `case_offsets` was `[0, 0]` for an empty log where the invariant requires `[0]`.
+- Functions encoding specified behaviour that no milestone-1 tool reaches — payment terms, early-settlement discounts, duplicate detection, and the role matrix for invoice recording, payment blocks and approvals — were untestable dead weight a reader could not distinguish from load-bearing code. They are now pinned by `tests/test_controls.py`.

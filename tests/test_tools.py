@@ -132,3 +132,79 @@ def test_kill_switch_pauses_before_anything_else(world_copy, monkeypatch, level,
     args = (CLERK, CLEAN) if tool == "clear_invoice" else (BUYER_OTHER, TRAP, 10.0, 1500.0)
     result = function(*args)
     assert (result.get("error") == "paused") is paused
+
+
+def test_clear_invoice_check_order_matches_the_spec(world_copy):
+    """SPEC TOOL-6 pins the order, and the order is observable.
+
+    The spec and the implementation disagreed about this: the spec said the
+    amount was checked third, the code checked it last, and the docstring
+    argued for the spec while the code did the opposite. The implemented order
+    is the right one, so the spec was corrected -- and pinned here, because a
+    prose ordering with no test is a comment.
+    """
+    from agent import db
+
+    # Above the clearing limit AND payment-blocked. If the amount were checked
+    # before the controls, this would queue for a controller who cannot act,
+    # because the block's reason is unresolved. It must refuse instead.
+    with db.connection() as conn:
+        db.set_payment_block(
+            conn, item_key=LARGE, blocked=True, reason="price query", actor_id="ap-001"
+        )
+    blocked = tools.clear_invoice(CLERK, LARGE)
+    assert blocked["error"] == "not_eligible"
+    assert "payment block" in blocked["reason"]
+
+    # With the block lifted, the same invoice queues on the amount.
+    with db.connection() as conn:
+        db.set_payment_block(
+            conn, item_key=LARGE, blocked=False, reason="resolved", actor_id="ap-001"
+        )
+    queued = tools.clear_invoice(CLERK, LARGE)
+    assert queued["ok"] and queued["trigger"] == "above_limit"
+
+
+def test_deletion_is_checked_before_the_invoice_exists(world_copy):
+    """A deleted item refuses on the deletion, not on anything downstream."""
+    result = tools.clear_invoice(CLERK, DELETED)
+    assert result["error"] == "not_eligible"
+    assert "deleted" in result["reason"]
+
+
+def test_kill_switch_precedes_authorization(world_copy, monkeypatch):
+    """Rung 1: a paused system cannot be argued into acting by any caller.
+
+    A buyer has no authority to clear at all, so if authorization ran first
+    this would say permission_denied. It must say paused: the switch is the
+    outermost gate.
+    """
+    monkeypatch.setenv("MB_KILL_SWITCH", "readonly")
+    result = tools.clear_invoice(BUYER_RELEASER, CLEAN)
+    assert result["error"] == "paused"
+
+
+def test_the_kill_switch_only_names_tools_that_exist():
+    """A ladder that lists planned tools overstates what it enforces.
+
+    `MB_KILL_SWITCH=payments` once appeared to pause `remove_payment_block`,
+    which has no implementation, so the rung read as a stronger guarantee than
+    it gave.
+    """
+    from agent import killswitch
+
+    assert killswitch.WRITE_TOOLS <= set(tools.TOOLS)
+    for level, paused in killswitch.PAUSED_BY_LEVEL.items():
+        assert paused <= set(tools.TOOLS), f"level {level!r} names a tool that does not exist"
+    # The planned set is documented but must stay out of what is enforced.
+    assert not (killswitch.PLANNED_WRITE_TOOLS & set(tools.TOOLS))
+
+
+def test_every_write_tool_is_actually_guarded(world_copy, monkeypatch):
+    """readonly must pause all of them, not just the ones someone remembered."""
+    from agent import killswitch
+
+    monkeypatch.setenv("MB_KILL_SWITCH", "readonly")
+    for name in killswitch.WRITE_TOOLS:
+        args = (CLERK, CLEAN) if name == "clear_invoice" else (BUYER_OTHER, TRAP, 1.0, 10.0)
+        assert tools.TOOLS[name](*args)["error"] == "paused", name

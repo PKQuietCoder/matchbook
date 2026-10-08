@@ -13,7 +13,8 @@ def test_edges_counts_and_endpoints(tiny_log):
     # too; c4 interposes a Remove Payment Block and so does not.
     assert named[("Record Invoice Receipt", "Clear Invoice")].count == 4
     assert graph.case_count == 5
-    assert graph.starts["Create" and tiny_log.activities.id_of("Create Purchase Order Item")] == 5
+    create = tiny_log.activities.id_of("Create Purchase Order Item")
+    assert graph.starts[create] == 5
     assert graph.ends[tiny_log.activities.id_of("Clear Invoice")] == 4  # c2 ends on the GR
 
 

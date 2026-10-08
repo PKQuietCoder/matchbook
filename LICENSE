@@ -1,0 +1,39 @@
+Copyright (c) 2026 Pradyumna Mishra. All rights reserved.
+
+This repository's own contents -- the mining library, the agent, the policy
+corpus, SPEC.md, facts.yaml, the tests and the documentation -- are proprietary
+and are not licensed for redistribution or reuse. No rights are granted except
+by separate written agreement.
+
+----------------------------------------------------------------------------
+A DECISION IS PENDING HERE, AND IT IS YOURS TO MAKE.
+
+This file states the legal default: with no licence, a reader has no rights.
+That is deliberate as a starting point, because it is the only reversible
+choice -- a permissive licence can be granted later, but it cannot be
+retracted once published.
+
+It is probably not what you want long term. Pick one before publishing:
+
+  * Keep this notice if the repository is a commercial asset you license to
+    customers and show in demos. Students who clone it then need an explicit
+    grant from you (a course licence, or a separate cut-down repository).
+  * Apache-2.0 or MIT if you want students and prospects to use the code
+    freely. Apache-2.0 additionally grants patent rights and requires
+    attribution, which is the usual choice for a commercially sponsored
+    teaching repository.
+  * A split: permissive for the library, proprietary for the course material.
+
+Whatever you choose, it does NOT change the third-party data terms. Those are
+separate, non-negotiable, and recorded in NOTICE and logs/README.md.
+----------------------------------------------------------------------------
+
+THIRD-PARTY DATA IS NOT COVERED BY THIS NOTICE.
+
+Datasets under logs/ are licensed by their own authors on their own terms:
+
+  logs/helpdesk/   MIT          -- see logs/helpdesk/LICENSE
+  logs/snapshot/   CC BY 4.0    -- see logs/snapshot/LICENSE
+
+Attribution for both is in NOTICE. Those licences grant rights this notice
+does not, and impose conditions this notice cannot waive.

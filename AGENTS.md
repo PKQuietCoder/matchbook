@@ -46,6 +46,16 @@ the *process* an agent actually executes.
 - **Compare control flow across logs; compare performance only within a log.** BPI 2019's
   timing is minute-precision with assumed intra-day order; the agent's spans are
   microsecond-precise.
+- **Tokens belong to the model call that spent them.** They are recorded on model spans
+  only; a tool span carries none, because the cost a tool result causes arrives as
+  *input* on the next model call. `bridge/cost.py` reaches an activity by joining
+  `(run_id, step)`. Where one step did several things its tokens are divided equally and
+  **the report says how many steps were split** -- the same disclosure discipline as
+  `tie_broken`. A scripted run is reported as *unmeasured*, never as free.
+- **The model is Claude Sonnet via the `anthropic` SDK, and there is no agent framework.**
+  The session loop is Matchbook's own, behind the one-method `Model` protocol in
+  `agent/agent.py`. Do not add an agent framework to get a feature that protocol can
+  already express.
 - **Never present synthetic data as real,** and never claim it is unrelated to BPI 2019.
   It is derived statistics, attributed. Fidelity is reported in `build/fidelity.md`, not
   asserted.
