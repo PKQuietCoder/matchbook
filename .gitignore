@@ -1,6 +1,21 @@
 # Third-party logs are fetched, never committed (except logs/snapshot and logs/helpdesk).
 logs/raw/
 logs/eventstore.db
+
+# logs/frames/ is the log as CSV tables -- ~15 MB and derived from the
+# DOI-fetched file, so only its README is committed. Rebuild with logs/to_csv.py.
+logs/frames/*
+!logs/frames/README.md
+
+# logs/otlp/ holds ONE small committed fixture; every other export there is a
+# build product. Allowlisted rather than blocklisted on purpose: a full-log
+# export is 57 MB and is the DOI-fetched log in another format, so the default
+# for anything new in this directory must be "not committed".
+logs/otlp/*
+!logs/otlp/README.md
+!logs/otlp/bpic19-sample.ndjson.gz
+!logs/otlp/bpic19-sample.disclosure.md
+!logs/otlp/bpic19-sample.manifest.json
 build/
 spans.db
 .sessions.db
@@ -10,3 +25,4 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+.DS_Store

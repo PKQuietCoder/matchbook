@@ -8,8 +8,12 @@ BPI Challenge 2019
            https://creativecommons.org/licenses/by/4.0/
   Used in: logs/snapshot/ (a sampled subset, unmodified field values), and as the
   source distribution fitted by seed/fit.py. Changes made: sampling, conversion
-  from IEEE XES to the Matchbook canonical CSV/SQLite schema, and documented
+  from IEEE XES to the Matchbook canonical CSV/SQLite schema, export to OTLP/JSON
+  spans (one trace per case, one zero-duration span per event), conversion to
+  DataFrame-ready CSV tables with a dtypes sidecar (logs/frames/), and documented
   deterministic tie-breaking of equal timestamps.
+  The organizers' own CSV conversion is fetched as a cross-check only, never
+  committed, and is attributed to the same author and DOI.
 
 --------------------------------------------------------------------------------
 Helpdesk event log

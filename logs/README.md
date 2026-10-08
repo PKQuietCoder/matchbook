@@ -30,6 +30,90 @@ and no resource or seriousness attributes. The richer attribute version lives on
 4TU under the legacy general terms of use and is therefore *not* committable --
 do not substitute it.
 
+### `logs/frames/` -- the log as DataFrame-ready CSV tables
+
+| | |
+| --- | --- |
+| Derived from | the DOI-fetched `logs/raw/BPI_Challenge_2019.xes` |
+| License | **CC BY 4.0**, inherited; attribution in `bpic19-frames-manifest.json` |
+| Committed | **nothing but `README.md`** -- the tables are ~15 MB and derived from a DOI-fetched log |
+| Rebuild | `python logs/to_csv.py` (~35 s, 469 MB peak) |
+
+Two gzipped CSVs plus a `dtypes.json` sidecar: `bpic19-events.csv.gz`
+(1,595,923 rows, 11.8 MB) and `bpic19-cases.csv.gz` (251,734 rows, 3.0 MB).
+14.8 MB together, slightly smaller than the gzipped XES at 16.9 MB. Full detail
+in [`frames/README.md`](frames/README.md).
+
+The conversion needs **no new dependency** -- `process/csvio.py` is standard
+library, and pandas is the consumer's dependency at read time. It is lossless in
+the data: every timestamp is `.000` milliseconds and `Z`, the only XES types
+present are string/float/date/boolean, and the EUR column has at most one decimal
+place so integer cents never rounds. The sidecar is what carries the schema a CSV
+lacks; without it `GR-Based Inv. Verif.` reads back as the string `'False'` and
+`Item` `00001` as the integer `1`.
+
+The challenge organizers' own CSV conversion (36,720,297 bytes, live on the
+conference webserver, not in the DOI record) is registered as `bpic19-csv` and
+used only as an outside cross-check via `logs/to_csv.py --cross-check`. It
+**agrees exactly**: 1,595,923 events over 251,734 cases on both sides, every case
+id in both, zero cases with differing event counts. Their row count also confirms
+the `<global>` off-by-one corrected below.
+
+### `logs/otlp/` -- the log as OpenTelemetry spans
+
+| | |
+| --- | --- |
+| Derived from | the committed `logs/snapshot/` sample (and, on demand, the DOI-fetched full log) |
+| License | **CC BY 4.0**, inherited; attribution travels inside every file as `mb.log.attribution` |
+| Committed | `bpic19-sample.ndjson.gz` only -- 50 cases, 369 events, 419 spans, 18 KB |
+| Generated | `bpic19-full.*` (1,847,657 spans, 57 MB) and `agent.*`, both gitignored |
+
+The same event log as OTLP/JSON spans: one trace per case, one zero-duration
+span per event under a measured case root. One
+`ExportTraceServiceRequest` per NDJSON line, so a line POSTs to any OTLP/HTTP
+collector unchanged. Written by `process/otlp.py`, which is hand-rolled standard
+library -- there is no `opentelemetry` dependency, and
+`tests/test_offline_mining.py` writes and re-reads spans with that import
+blocked.
+
+**Only the 50-case fixture is committed.** `.gitignore` allowlists this
+directory rather than blocklisting it, because a full-log export is 57 MB and is
+the DOI-fetched log in another format -- and this repo's rule is that a log
+fetched by DOI is never committed. The default for anything new here must
+therefore be "not committed". The fixture earns its place by being small,
+redistributable, and the golden file the exporter's byte-diff test needs.
+
+Regenerate the fixture, and build the full export:
+
+```bash
+python -m process otlp bpic19-sample --max-cases 50 \
+    --doi 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1 \
+    --attribution "van Dongen, Boudewijn (2019): BPI Challenge 2019. Version 1. 4TU.ResearchData. https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1 Licensed CC BY 4.0." \
+    --out logs/otlp/bpic19-sample.ndjson.gz
+
+python -m process otlp bpic19 --from-xes logs/raw/BPI_Challenge_2019.xes \
+    --license "CC BY 4.0" --doi 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1 \
+    --out logs/otlp/bpic19-full.ndjson.gz
+```
+
+The export is byte-reproducible: ids are derived by SHA-256 rather than drawn at
+random, attributes are key-sorted, and the gzip header is written with `mtime=0`.
+A `.disclosure.md` and `.manifest.json` land beside each export recording what
+the conversion measured and what it refused to assert. In short:
+
+- **Event spans have zero duration.** BPI 2019 has no `lifecycle:transition`
+  attribute on any event, so an event is an instant. Nothing was interpolated.
+- **No span carries a `status`.** The log records no per-event outcome, so an
+  error rate computed from this file is undefined, not zero.
+- **Sort by `mb.seq`, not by time.** Tied events share `startTimeUnixNano`, so a
+  consumer ordering by timestamp reorders them arbitrarily.
+- **No case-level actor.** 242,457 of 251,734 cases (96.3%) involve more than
+  one `org:resource`, so no single actor describes a case.
+
+Verified end to end: the full export re-reads to the source log exactly --
+251,734 of 251,734 cases and 1,595,923 of 1,595,923 events agree on activity,
+timestamp, resource, value and tie-break flag.
+
 ### `logs/snapshot/` -- the pinned BPI 2019 sample
 
 | | |
@@ -43,7 +127,54 @@ do not substitute it.
 CC BY 4.0 permits redistribution, derivatives and commercial use with
 attribution, so a **sampled subset is committed** and a fresh clone works with no
 network. Attribution is in `NOTICE` and in the snapshot's own header. Sampling is
-deterministic and reproducible: see `logs/snapshot/README.md`.
+deterministic and reproducible: see `logs/snapshot/SAMPLE.md`.
+
+#### A correction to this file, found by measuring again
+
+The row above used to read "99.99% of 1,595,927 events have `seconds == 00`, and
+only 173 sit at exact midnight". Both numbers came from counting
+`time:timestamp` occurrences in the raw XML, and the raw XML has one more than
+the log has events: the `<global scope="event">` block declares a schema default
+of `1970-01-01T00:00:00.000Z`, which is a declaration, not an event.
+
+Removing it gives 1,595,923 events -- the figure this file already quotes in the
+scale row -- of which **100%** fall on a whole minute and **172** at exact
+midnight. Measured directly:
+
+```bash
+# every timestamp's seconds field, tallied: one bucket, "00"
+grep -oE 'time:timestamp" value="[0-9-]{10}T[0-9]{2}:[0-9]{2}:[0-9]{2}' \
+    logs/raw/BPI_Challenge_2019.xes | awk -F: '{print $NF}' | sort | uniq -c
+#   1595924 00          <- 1,595,923 events + the <global> default
+grep -oE 'time:timestamp" value="1970-01-01T00:00:00' logs/raw/BPI_Challenge_2019.xes | wc -l
+#         1             <- the <global> default
+```
+
+The same `<global>` miscount reached one more figure in this file: the resource count
+was recorded as 629, which is the number of distinct `org:resource` strings in the
+XML. Only **628** appear on an event; `UNKNOWN` is the declared default and is
+never used. Measured:
+
+```bash
+# distinct resource strings in the file, including the <global> default
+grep -oE 'org:resource" value="[^"]*"' logs/raw/BPI_Challenge_2019.xes \
+    | sed -E 's/.*value="([^"]*)"/\1/' | sort -u | wc -l     # 629
+# ... and the one that never appears on an event
+python logs/to_csv.py && python -c "import gzip,csv; \
+  print(len({r['resource'] for r in csv.DictReader(gzip.open('logs/frames/bpic19-events.csv.gz','rt'))}))"   # 628
+```
+
+While measuring that, one more thing worth recording: **320 of 1,595,923 events
+(0.02%) fall outside 2018-2019** -- 10 in **1948**, 9 in 1993, 22 in 2001, 45 in
+2008, 223 in 2017 and 2 in 2020, against 1,550,468 in 2018. The dataset is
+described as a 2018 purchasing process, so these look like data-entry artifacts.
+They are kept rather than silently dropped; filter them if your question needs
+it, and say that you did.
+
+The conclusion does not change; it gets stronger. The claim was that these are
+not day-granularity timestamps, and at 100% whole-minute the precision is exactly
+one minute with no exceptions. Which is the point of the section: a number worth
+repeating is worth re-measuring, including one of ours.
 
 #### Measured, not inherited
 
@@ -55,12 +186,12 @@ description.**
 | Claim in the literature / challenge description | What the file actually contains |
 | --- | --- |
 | "60 subsidiaries" | The `Company` attribute has **4** distinct values, and they are wildly skewed: `companyID_0000` holds 250,686 of 251,734 cases (99.6%), `companyID_0003` holds 1,044, and `companyID_0001` and `companyID_0002` hold **2 cases each**. Any per-company analysis is really a single-company analysis. |
-| "day-granularity timestamps" | Timestamps are **minute**-precision: 99.99% of 1,595,927 events have `seconds == 00`, and only 173 sit at exact midnight. The real ordering problem is not date-only values -- it is **same-minute ties**. In the snapshot they affect 17.2% of events, but only **3.0% are consequential**: a tie between two events of the *same* activity cannot change a sequence, and most of them are. |
+| "day-granularity timestamps" | Timestamps are **minute**-precision: **all 1,595,923 events** have `seconds == 00`, and 172 sit at exact midnight. The real ordering problem is not date-only values -- it is **same-minute ties**, which affect 233,463 of 1,595,923 events (14.6%) over the full log and 17.2% within the snapshot; only **3.0% are consequential**, because a tie between two events of the *same* activity cannot change a sequence, and most of them are. |
 
 Confirmed as described:
 
 - **42 activities**, led by `Record Goods Receipt` (314,098), `Create Purchase Order Item` (251,736), `Record Invoice Receipt` (228,760), `Vendor creates invoice` (219,920), `Clear Invoice` (194,394) and `Record Service Entry Sheet` (164,975). That last one is substantial and is missing from the commonly cited activity list.
-- **629 distinct resources: 607 `user_*` + 20 `batch_*`**, exactly the published human/batch split, plus two sentinels (`UNKNOWN`, `NONE`). The naming convention is what `process.xes.classify_resource` reads, so no committed batch-user list is needed. Note there are no `vendor_*` resources -- the `Vendor creates invoice` events are not attributed to a vendor principal, so the vendor resource kind only ever appears in the synthetic and agent logs.
+- **628 distinct resources on events: 607 `user_*` + 20 `batch_*`**, exactly the published human/batch split, plus one sentinel (`NONE`). A 629th string, `UNKNOWN`, appears in the file but never on an event -- it is the `<global scope="event">` default, the same schema declaration that inflates the midnight-timestamp count below. The naming convention is what `process.xes.classify_resource` reads, so no committed batch-user list is needed. Note there are no `vendor_*` resources -- the `Vendor creates invoice` events are not attributed to a vendor principal, so the vendor resource kind only ever appears in the synthetic and agent logs.
 - **11,973 distinct variants** over 251,734 cases, with the **top 20 variants covering 70.5%** of cases. So the process has a clear spine and a very long tail: discovery must be run on an explicit coverage sublog, or it will return a flower model.
 - **The tie-break is not cosmetic.** Applying the declared `activity_rank` from `facts.yaml` collapses the snapshot from **378 variants to 373** and changes the event sequence of **76 cases**. A discovered model or a fitness number is therefore partly a consequence of that declared ordering, and a result should say which ordering it used. Reproduce with `python -m process ingest logs/snapshot/bpic19-sample-events.csv.gz --log-id bpic19-sample --sensitivity`; the committed snapshot deliberately preserves the source file's event order so the baseline survives.
 - **1,975 vendors**; the four matching flows split 87.8% / 6.0% / 5.8% / 0.4% (`3-way match, invoice before GR` / `after GR` / `Consignment` / `2-way match`). The flow strings above are the exact `Item Category` values and are what `facts.yaml` must match.

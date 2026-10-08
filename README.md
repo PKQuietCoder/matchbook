@@ -73,6 +73,77 @@ uv run python -m process tie-breaks bpic19-sample          # audit assumed order
 uv run python -m process dfg bpic19-sample --flow "Consignment" --out build/consignment.svg
 ```
 
+### Getting the log into pandas
+
+```bash
+uv run python -m logs.download --log bpic19
+uv run python logs/to_csv.py                      # -> logs/frames/, ~35 s
+uv run python logs/to_csv.py --max-cases 2000     # fast path
+```
+
+```python
+import json, pandas as pd
+d = json.load(open("logs/frames/bpic19-dtypes.json"))
+events = pd.read_csv("logs/frames/bpic19-events.csv.gz", dtype=d["events"],
+                     parse_dates=["timestamp"], keep_default_na=False)
+cases  = pd.read_csv("logs/frames/bpic19-cases.csv.gz", dtype=d["cases"],
+                     keep_default_na=False)
+```
+
+Two tables — 1,595,923 event rows and 251,734 case rows, 14.8 MB gzipped, which is
+slightly smaller than the gzipped XES. A joined layout would repeat the 16 case
+attributes on every event: ~1.92 GB in memory against ~0.36 GB, so join on
+`case_id` when you actually need it.
+
+**Pass the dtypes sidecar.** A CSV has no schema, so without it
+`GR-Based Inv. Verif.` reads back as the string `'False'` and `Item` `00001` as the
+integer `1`. With it the conversion is lossless, and `tests/test_frames.py` proves
+that against the real XES rather than asserting it. `keep_default_na=False` matters
+too, or pandas turns the empty strings into `NaN`.
+
+**Row order is the order** — sort by `['case_id', 'seq']` if you reindex, never by
+`timestamp`: every event falls on a whole minute and 233,463 of them (14.6%) share
+an instant with their predecessor, so a timestamp sort reshuffles them.
+
+### Exporting the log as OpenTelemetry spans
+
+The human log and the agent's log are both `EventLog`s, so one exporter opens
+both in any OTLP tool. One trace per case, one span per event.
+
+```bash
+uv run python -m process otlp bpic19-sample --out logs/otlp/bpic19-sample.ndjson.gz
+uv run python -m process otlp-verify logs/otlp/bpic19-sample.ndjson.gz --against bpic19-sample
+#   ^ compares only when the export is unfiltered; a --max-cases slice is
+#     reported as not-applicable rather than as six conservation failures
+uv run python -m process otlp agent-attempts --out logs/otlp/agent.ndjson.gz
+
+# the whole 1.6M-event log, streamed straight off the 728 MB raw file
+uv run python -m logs.download --log bpic19
+uv run python -m process otlp bpic19 --from-xes logs/raw/BPI_Challenge_2019.xes \
+    --license "CC BY 4.0" --doi 10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1 \
+    --out logs/otlp/bpic19-full.ndjson.gz
+```
+
+Measured on the full log, not estimated: **1,847,657 spans** (1,595,923 events +
+251,734 case roots) in **59.6 s** at **81 MB peak resident memory**, producing
+1.43 GB of NDJSON or 59.6 MB gzipped. Memory is flat because `--from-xes` builds
+one case at a time; reading the whole log into an `EventLog` first costs ~1.4 GB.
+
+The export is hand-written JSON with no `opentelemetry` dependency —
+`tests/test_offline_mining.py` blocks that import and then writes and re-reads
+spans anyway, which is the claim. Plain OTLP is POST-able unchanged to any
+OTLP/HTTP collector, Langfuse's `/api/public/otel/v1/traces` included; nothing
+vendor-specific is emitted.
+
+What the conversion will not assert, because the log does not record it: event
+durations (BPI 2019 has no `lifecycle:transition`, so every event span has
+`start == end`), span nesting, per-event outcome (no span carries a `status`, so
+an error rate from this file is undefined, not zero), and a case-level actor
+(96.3% of cases involve more than one resource). Order lives in `mb.seq`, not in
+the timestamps — 233,463 events share an instant with their predecessor. Each
+export writes a `.disclosure.md` and a `.manifest.json` saying so, with
+denominators.
+
 What that reports on the committed sample of real data:
 
 - `Record Invoice Receipt → Clear Invoice` has a **~25-day median** and is the
@@ -234,12 +305,15 @@ logs/
   download.py             fetch by DOI, verify against manifest.json
   sample.py               derive the committed snapshot + SAMPLE.md disclosure
   snapshot/               the pinned CC BY 4.0 BPI 2019 sample (committed)
+  otlp/                   the same log as OTLP spans; only the 50-case fixture is committed
+  frames/                 the same log as CSV tables for pandas; nothing committed but its README
+  to_csv.py               XES -> two CSV tables + a dtypes sidecar, streamed
   helpdesk/               the MIT Helpdesk log: the fast fixture (committed)
-SPEC.md                   the prescriptive process, with requirement IDs
 process/                  THE MINING LIBRARY -- PyYAML is its only dependency
   log.py                  the columnar EventLog; the tie-break audit
   store.py schema.sql     the SQLite event store; every log side by side
   xes.py csvio.py         streaming IEEE-XES and CSV, both directions
+  otlp.py                 EventLog <-> OTLP/JSON spans, both directions
   dfg.py filters.py       directly-follows graph; sublog selection
   variants.py             variants, coverage curve, rework
   rules.py                declarative P2P control conformance
@@ -267,7 +341,7 @@ analysis/
   normalize.py            one normalized trace record, with process features
   review.py               open coding, sorted so the interesting traces come first
   state/                  append-only annotations, labels, and the mode taxonomy
-tests/                    offline; no API keys; 107 tests
+tests/                    offline; no API keys; 150 tests
 ```
 
 ## What is not built yet

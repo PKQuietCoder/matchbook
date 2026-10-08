@@ -1,32 +1,45 @@
 {
-  "_comment": "Expected bytes and digests for every fetched log. logs/download.py refuses a file that does not match. Verified 2026-10-07.",
-  "logs": {
-    "helpdesk": {
-      "title": "Helpdesk",
-      "citation": "Verenich, Ilya (2016): Helpdesk. Version 1. Mendeley Data.",
-      "doi": "10.17632/39bp3vv62t.1",
-      "license": "MIT",
-      "committed": true,
-      "destination": "logs/helpdesk/helpdesk.csv",
-      "sources": [
-        "https://data.mendeley.com/public-files/datasets/39bp3vv62t/files/20b5d03f-c6f7-4fdc-91c3-67defd4c67bb/file_downloaded"
-      ],
-      "size_bytes": 367018,
-      "sha256": "1306e06414481a1debd845ea760b5ce8331d087ddc67d7f7ec300b4bea3f41b7"
-    },
-    "bpic19": {
-      "title": "BPI Challenge 2019",
-      "citation": "van Dongen, Boudewijn (2019): BPI Challenge 2019. Version 1. 4TU.ResearchData.",
-      "doi": "10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1",
-      "license": "CC BY 4.0",
-      "committed": false,
-      "destination": "logs/raw/BPI_Challenge_2019.xes",
-      "sources": [
-        "https://data.4tu.nl/ndownloader/files/24072995",
-        "https://ndownloader.figshare.com/files/24072995"
-      ],
-      "size_bytes": 728558522,
-      "md5": "4eb909242351193a61e1c15b9c3cc814"
-    }
+ "_comment": "Expected bytes and digests for every fetched log. logs/download.py refuses a file that does not match. Verified 2026-10-07.",
+ "logs": {
+  "helpdesk": {
+   "title": "Helpdesk",
+   "citation": "Verenich, Ilya (2016): Helpdesk. Version 1. Mendeley Data.",
+   "doi": "10.17632/39bp3vv62t.1",
+   "license": "MIT",
+   "committed": true,
+   "destination": "logs/helpdesk/helpdesk.csv",
+   "sources": [
+    "https://data.mendeley.com/public-files/datasets/39bp3vv62t/files/20b5d03f-c6f7-4fdc-91c3-67defd4c67bb/file_downloaded"
+   ],
+   "size_bytes": 367018,
+   "sha256": "1306e06414481a1debd845ea760b5ce8331d087ddc67d7f7ec300b4bea3f41b7"
+  },
+  "bpic19": {
+   "title": "BPI Challenge 2019",
+   "citation": "van Dongen, Boudewijn (2019): BPI Challenge 2019. Version 1. 4TU.ResearchData.",
+   "doi": "10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1",
+   "license": "CC BY 4.0",
+   "committed": false,
+   "destination": "logs/raw/BPI_Challenge_2019.xes",
+   "sources": [
+    "https://data.4tu.nl/ndownloader/files/24072995",
+    "https://ndownloader.figshare.com/files/24072995"
+   ],
+   "size_bytes": 728558522,
+   "md5": "4eb909242351193a61e1c15b9c3cc814"
+  },
+  "bpic19-csv": {
+   "title": "BPI Challenge 2019 -- the organizers' own CSV conversion",
+   "citation": "van Dongen, Boudewijn (2019): BPI Challenge 2019. Version 1. 4TU.ResearchData.",
+   "doi": "10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1",
+   "license": "CC BY 4.0",
+   "committed": false,
+   "destination": "logs/raw/BPIChallenge2019CSV.zip",
+   "sources": [
+    "https://icpmconference.org/2019/wp-content/uploads/sites/6/2019/02/BPIChallenge2019CSV.zip"
+   ],
+   "size_bytes": 36720297,
+   "_comment": "A CROSS-CHECK ONLY, not a source of truth. Published on the conference webserver rather than the DOI record -- the figshare API for that record returns only BPI_Challenge_2019.xes -- and the challenge page warns it 'requires special handling for literal columns containing commas within quoted text'. Used by `logs/to_csv.py --cross-check`. sha256 is recorded on first fetch; verified live 2026-10-08, last-modified 2024-05-22."
   }
+ }
 }
