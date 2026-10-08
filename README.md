@@ -332,7 +332,12 @@ agent/
   scripts.py              scripted sessions, including deliberate failure fixtures
   killswitch.py           off / clearing / payments / readonly
 observability/
-  spans.py schema.sql     OTel-shaped spans into local SQLite; no Docker
+  spans.py schema.sql     OTel-shaped spans into local SQLite; AUTHORITATIVE
+  instrument.py           real OTel spans -> local Langfuse; no-ops with no SDK
+  docker-compose.yml      Langfuse v3 for reading traces; ports shifted by one
+server/
+  app.py                  POST /sessions, POST /sessions/{id}/messages
+  sessions.py             conversation history; a session is not a case
 bridge/
   spans_to_log.py         *** spans -> event log: the case notion and the alphabet
   activity_map.yaml       which tools are business activities, and which are not
@@ -341,8 +346,45 @@ analysis/
   normalize.py            one normalized trace record, with process features
   review.py               open coding, sorted so the interesting traces come first
   state/                  append-only annotations, labels, and the mode taxonomy
-tests/                    offline; no API keys; 150 tests
+scenarios/
+  schema.py validate.py   the scenario record, checked against the world
+  runner.py               runs a dataset through the HTTP endpoints
+  export_langfuse.py      pulls the traces back; fails on a missing one
+  skill/SKILL.md          how to write a scenario whose answer key is grounded
+reports/smoke.sql         what a run contained, in ClickHouse SQL
+homework/module-1/        the handouts, and the xfail hole patches
+tests/                    offline; no API keys; 188 tests
 ```
+
+### Reading the agent's traces
+
+Everything above runs with no Docker. For a trace UI, the agent also exports
+real OpenTelemetry spans to a local Langfuse:
+
+```bash
+docker compose -f observability/docker-compose.yml up -d
+#   http://localhost:3001  ->  student@example.com / matchbook-dev-pass
+uv run uvicorn server.app:app --port 8010
+```
+
+Ports are shifted by one from upstream so this stack can coexist with the
+sibling Oakline course's. With the stack down, or the `LANGFUSE_*` variables
+unset, `instrument.py` records nothing and every command above still works --
+`tests/test_offline_mining.py` blocks `opentelemetry` and `fastapi` by name and
+mines a real log anyway.
+
+Two recorders, one decision: the SQLite span store stays authoritative, because
+the bridge mines the event log from it and `bridge/cost.py` prices it. Both go
+through `record_tool_result` and `record_activity`, so they cannot disagree
+about what reached the log.
+
+One number that disagrees on purpose. On a live `diagnose_block` run Langfuse
+priced the session at **$0.005544** and `bridge.cost` at **$0.0106**. Langfuse
+is pricing exactly what `gen_ai.usage.input_tokens` means; it is missing the
+1,867 cache tokens, which sit under `mb.*` because Anthropic reports its four
+counts as disjoint sets billed at three different rates. Summing them into the
+standard field would publish a number no provider reported. **`bridge.cost` is
+authoritative for money; the trace UI is authoritative for shape.**
 
 ## What is not built yet
 
@@ -350,8 +392,14 @@ Milestone 1 is the vertical slice. Still to come, in order: discovery (process
 tree, inductive cuts, Petri nets, token replay) validated against the CC0
 Process Discovery Contest corpus; alignments and precision; the k-rollout
 variability engine; the fitted synthetic twin with its own ground-truth answer
-key; the live chat + process-map explorer; the object-centric view; and the
-course layer of handouts and judges. See `design.md`.
+key; the live chat + process-map explorer; and the object-centric view. See
+`design.md`.
+
+The course layer (milestone 8) is partly built: `homework/module-1/` holds the
+three Module 1 handouts with generated `xfail` hole patches, and `scenarios/`
+runs a dataset through the endpoints. Modules 2, 3 and 5 are still the sibling
+course's text and are rewritten when reached -- judges and `optimize/` with
+them.
 
 ## Data and licensing
 

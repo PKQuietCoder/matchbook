@@ -46,6 +46,23 @@ the *process* an agent actually executes.
 - **Compare control flow across logs; compare performance only within a log.** BPI 2019's
   timing is minute-precision with assumed intra-day order; the agent's spans are
   microsecond-precise.
+- **Two recorders, one decision.** Every run is recorded twice: to
+  `observability/spans.py` (SQLite, **authoritative** -- the bridge mines the
+  event log from it and `bridge/cost.py` prices it) and to
+  `observability/instrument.py` (real OTel spans, for the trace UI). Everything
+  both record goes through `record_tool_result` and `record_activity`, called
+  from the one site in `_call`. Do not add a second call site: two recorders that
+  disagree are worse than one, because the disagreement is invisible until
+  someone reconciles a report by hand. `instrument.py` must also stay import-
+  and call-safe with no OTel SDK installed, so the scripted, no-key pipeline
+  keeps working.
+- **A business activity is not a successful tool call.** Only a write that
+  changed the world contributes one. A refused or paused attempt is a span, not
+  a step. A clearing *queued for a controller* returns `ok` and contributes
+  **nothing** -- recording `Clear Invoice` there would make the mined log assert
+  a payment that never happened, which is SPEC RESP-3 in mined-log form. This
+  rule lives in `record_activity` and is pinned on both recorders at once by
+  `tests/test_observability.py`.
 - **Tokens belong to the model call that spent them.** They are recorded on model spans
   only; a tool span carries none, because the cost a tool result causes arrives as
   *input* on the next model call. `bridge/cost.py` reaches an activity by joining
@@ -62,4 +79,13 @@ the *process* an agent actually executes.
 - Handle API keys locally through `.env`. Never request keys in chat, print their values,
   or commit them. Refer to credentials by environment variable name.
 - Homework placeholders intentionally raise `NotImplementedError`. Expected failures are
-  unfinished work, not proof of completion.
+  unfinished work, not proof of completion. The holes themselves are **not**
+  committed: `main` stays green and each assignment ships a generated patch pair
+  in `homework/module-N/`. Regenerate a patch when the code it touches changes;
+  never hand-edit one. See `homework/module-1/README.md`.
+- **A scenario's answer key comes from the world, not from a model.**
+  `scenarios/validate.py` checks every scenario against the seeded world and
+  `SPEC.md` -- the actor exists with the role claimed, the item exists, the policy
+  is a rendered document, the requirement id is declared. A scenario with a wrong
+  answer key does not merely miss a bug; it teaches the wrong thing to every
+  label and judge built on it.

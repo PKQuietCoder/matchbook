@@ -276,7 +276,7 @@ plausible, which is the worst kind of wrong.
 | 5 | `seed/fit.py` + `seed/simulate.py` + `build/fidelity.md`: the synthetic twin, measured |
 | 6 | `explore/`: chat left, live process map right — the demo surface, hostable because nothing is AGPL |
 | 7 | Object-centric: OCEL view, OC-DFG, and the second domain (OCEL 2.0 Order Management) |
-| 8 | Course layer: homework handouts, `xfail` holes, reference patches, judges, `optimize/` |
+| 8 | Course layer: homework handouts, `xfail` holes, reference patches, judges, `optimize/` — **Module 1 delivered**, see below |
 
 ## Risks
 
@@ -424,3 +424,98 @@ now states the position and flags the choice as pending and reversible.
 - `process/__init__.py` claimed the core was importable with the standard library alone; `process.config` needs PyYAML.
 - `case_offsets` was `[0, 0]` for an empty log where the invariant requires `[0]`.
 - Functions encoding specified behaviour that no milestone-1 tool reaches — payment terms, early-settlement discounts, duplicate detection, and the role matrix for invoice recording, payment blocks and approvals — were untestable dead weight a reader could not distinguish from load-bearing code. They are now pinned by `tests/test_controls.py`.
+
+---
+
+## Milestone 8, part one: Module 1 of the course layer
+
+Delivered: the three Module 1 handouts adapted from the sibling Oakline course,
+generated `xfail` hole patches for both assignments that have them, the tracing
+and HTTP layers the handouts assume, and the `scenarios/` package.
+
+### What the adaptation actually changed
+
+Most of it is substitution — five support tools become five purchase-to-pay
+tools, three retail roles become buyer/ap_clerk/controller, three orders become
+the five pinned items. Four things needed more than that:
+
+1. **Oakline's fuzzy-search exercise has no analogue**, so HW1's centrepiece is
+   `clear_invoice`'s nine ordered checks (SPEC TOOL-6) instead.
+2. **`seed.validate` has no analogue** and now appears in Preparation, because a
+   student should know before writing a tolerance check that they are
+   implementing the same constant the policy document quotes and `process/rules.py`
+   evaluates against 251,734 real cases.
+3. **`activities_recorded` is a new field** in every record the handouts ask for.
+   A reply is not evidence; a run claiming it cleared an invoice while
+   contributing no `Clear Invoice` activity has said two things, and only one is
+   checkable.
+4. **Flow becomes a required scenario dimension**, because every control rule is
+   flow-scoped and a dataset that is all 3-way exercises a quarter of the control
+   logic while looking complete.
+
+### Holes are not committed
+
+Oakline ships its holes in the starter, which is why its suite is red on a
+fresh clone. This repo cannot: `main` publishes a green suite and a README of
+measured claims that depend on the code working. So each assignment ships a
+generated patch pair, produced by an AST pass that empties a function body and
+keeps its signature and docstring — the docstring *is* the contract, and
+`clear_invoice`'s carries the nine-check order. Patches record the commit they
+came from and are verified in both directions.
+
+HW2's holes deliberately stop the agent running, unlike HW1's. The `_call` seam
+absorbs a `NotImplementedError` from a *tool*, because a half-built agent that
+still talks is useful. It does not absorb one from a *recorder*: instrumentation
+that failed quietly would leave a partially recorded event log, and a log that is
+wrong is worse than one that is missing.
+
+### Measured while building it, not assumed
+
+- **Langfuse v4 would have broken Homework 3.** v4 ingests our OTLP spans
+  correctly — verified, 8 spans — but defaults to "events_only mode", where
+  `/api/public/traces` refuses and the ClickHouse `traces` and `observations`
+  tables stay empty while data lands in `events_full`. HW3 reads traces back out
+  and its smoke report is SQL over those tables. Hence v3, which also matches the
+  sibling course.
+- **FastAPI was stealing the trace root.** Starlette 1.7 activates its own OTel
+  middleware whenever an SDK is installed, so every trace arrived named
+  `POST /sessions/{session_id}/messages` with `mb.session_message` as a child.
+  Langfuse v3 reads a trace's name, session, user, tags, input and output from the
+  ROOT span, so `sessionId`, `userId` and `tags` came back null and input/output
+  empty — traces openable one at a time but not selectable in bulk, which is
+  exactly what HW3's export and HW4's review need.
+  `telemetry={"tracing": False}` fixes it.
+- **A third-party cost figure understates this provider.** One live
+  `diagnose_block` session: Langfuse $0.005544, `bridge.cost` $0.0106. Langfuse
+  prices exactly what `gen_ai.usage.input_tokens` means and is missing the 1,867
+  cache tokens, which sit under `mb.*` because Anthropic's four counts are
+  disjoint and billed at three rates, so no single total can be priced correctly
+  by a consumer seeing one field. Recorded in `record_usage` with both numbers.
+- **`FINAL` is not optional on Langfuse's ClickHouse tables.** They are
+  ReplacingMergeTree, which keeps superseded rows until a merge runs, so the
+  smoke report counted one trace twice out of 26 before every read got `FINAL`.
+  Exactly the size of error nobody notices.
+- **A timing test was measuring interpreter warmth.**
+  `test_build_is_not_quadratic_in_case_count` compared one cold 8ms measurement
+  with one warm 26ms one: 2.0x alone, 3.1x after a full suite, on unchanged code.
+  The 36 new tests in this milestone exposed it rather than caused it. It now
+  warms up and takes the best of three.
+
+### New third-party components, and their licences
+
+The trace stack is the first time this repo acquires software it does not ship.
+`NOTICE` records each dev-time container and its terms. Redis is pinned to 7.2
+deliberately: 7.4 onward is RSALv2/SSPL, which is not OSI-approved, and the
+upstream compose file's `redis:7` tag floats onto it. A repo that excludes
+CC BY-NC datasets by written policy should not acquire an SSPL service by copying
+a compose file unread. One image cannot be pinned — `cgr.dev/chainguard/minio`
+publishes only a rolling tag on the free tier — and that is stated rather than
+hidden.
+
+### Still to do in milestone 8
+
+Modules 2, 3 and 5 remain the sibling course's text, about a support agent, and
+will not run here. They are rewritten when reached, and bring the judges,
+`eval_cases/`, CI and `optimize/` with them. `analysis/review.py` still hardcodes
+its state directory; `$MB_ANALYSIS_STATE` is named in this document but read
+nowhere, and Module 2 will want it.
