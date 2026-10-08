@@ -1,0 +1,165 @@
+# Reference Homework 4 artifacts needed to begin Homework 5.
+#
+# Apply this patch only if you did not complete Homework 4:
+#
+#     git apply homework/module-2/hw4-reference.patch
+#
+# The bundle adds one reviewed failure mode, its 100 binary labels, and a
+# short review summary. It is a starting point for Homework 5, not a
+# replacement submission for Homework 4.
+diff --git a/analysis/state/patterns.json b/analysis/state/patterns.json
+--- a/analysis/state/patterns.json
++++ b/analysis/state/patterns.json
+@@ -1 +1,21 @@
+-{"modes": []}
+\ No newline at end of file
++{
++  "modes": [
++    {
++      "name": "uninformative_response",
++      "definition": "The final reply omits information the user needs for the next decision, or adds detail that makes the needed information harder to find.",
++      "positive_trace_ids": [
++        "f5dd32b217b7b273d761640f63355512",
++        "1242fc11a51a78e0bf6aa0abd06a9c49",
++        "d47b3ac5990d737c43cc67129d5ce3fe"
++      ],
++      "close_negative_trace_ids": [
++        "13bc170360f221fe75c16853971b4c0f",
++        "49efeff9f4f63aa087e482812624e9f6",
++        "a0e3934d53f39f808bcce6c297db6903"
++      ],
++      "boundary": "Judge the reply against what this user asked for. A short answer is not a failure when the user requested a short answer. Extra detail is a failure only when it obscures the answer or the next step.",
++      "evaluator_type": "llm_judge",
++      "requirement_source": "RESP-3"
++    }
++  ]
++}
+diff --git a/analysis/state/labels/uninformative_response.jsonl b/analysis/state/labels/uninformative_response.jsonl
+new file mode 100644
+index 0000000..8f453f7
+--- /dev/null
++++ b/analysis/state/labels/uninformative_response.jsonl
+@@ -0,0 +1,100 @@
++{"trace_id": "f5dd32b217b7b273d761640f63355512", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "f5dd32b217b7b273d761640f63355512#0"}
++{"trace_id": "1242fc11a51a78e0bf6aa0abd06a9c49", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "1242fc11a51a78e0bf6aa0abd06a9c49#0"}
++{"trace_id": "d47b3ac5990d737c43cc67129d5ce3fe", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "d47b3ac5990d737c43cc67129d5ce3fe#0"}
++{"trace_id": "2f2c917685e0b9dfbb5af07aeecc1afe", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "2f2c917685e0b9dfbb5af07aeecc1afe#0"}
++{"trace_id": "13bc170360f221fe75c16853971b4c0f", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "13bc170360f221fe75c16853971b4c0f#0"}
++{"trace_id": "6a6e522fbac34ffe867099ec157b7b2d", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "6a6e522fbac34ffe867099ec157b7b2d#0"}
++{"trace_id": "bc7f60adb548264354fd1ebc0b7d31c3", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "bc7f60adb548264354fd1ebc0b7d31c3#0"}
++{"trace_id": "f1f797f5a80fbf28d1ffe85c9f7d1438", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "f1f797f5a80fbf28d1ffe85c9f7d1438#0"}
++{"trace_id": "5a7afbc8afe734e685213bd4b2ebd247", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "5a7afbc8afe734e685213bd4b2ebd247#0"}
++{"trace_id": "02c6c7a3bde3a1e8564940e881551852", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "02c6c7a3bde3a1e8564940e881551852#0"}
++{"trace_id": "2819ef7dc1cf0f4f74f90259477c0ad8", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "2819ef7dc1cf0f4f74f90259477c0ad8#0"}
++{"trace_id": "46952c8040ff1f5937969bf888a503bd", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "46952c8040ff1f5937969bf888a503bd#0"}
++{"trace_id": "e68b6352e51d75a1895b4b5cd38b69e0", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "e68b6352e51d75a1895b4b5cd38b69e0#0"}
++{"trace_id": "ea7fecc989cd3b23fd46648846b03eef", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "ea7fecc989cd3b23fd46648846b03eef#0"}
++{"trace_id": "bae25a9c1f06a5bf585875d2786e2510", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "bae25a9c1f06a5bf585875d2786e2510#0"}
++{"trace_id": "6970efcf4ce12d8e5d6b6a2aeed2ea0e", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "6970efcf4ce12d8e5d6b6a2aeed2ea0e#0"}
++{"trace_id": "a2358aef4143b922cf95b7dced86d5ed", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "a2358aef4143b922cf95b7dced86d5ed#0"}
++{"trace_id": "49efeff9f4f63aa087e482812624e9f6", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "49efeff9f4f63aa087e482812624e9f6#0"}
++{"trace_id": "a24e529add74455c9bc4e68ca6228707", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "a24e529add74455c9bc4e68ca6228707#0"}
++{"trace_id": "a0e3934d53f39f808bcce6c297db6903", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "a0e3934d53f39f808bcce6c297db6903#0"}
++{"trace_id": "3e1575134659e5dd8d7b3cf98512e9ef", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "3e1575134659e5dd8d7b3cf98512e9ef#0"}
++{"trace_id": "01e428325442e5b5e55d972c007448b4", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "01e428325442e5b5e55d972c007448b4#0"}
++{"trace_id": "cd9e3a93fb2c0b56377891fa3cc42a15", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "cd9e3a93fb2c0b56377891fa3cc42a15#0"}
++{"trace_id": "1e8832e926ac21fe1d0072b5f6dda115", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "1e8832e926ac21fe1d0072b5f6dda115#0"}
++{"trace_id": "b77bbac37897193d8bf5b1c45896e65a", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b77bbac37897193d8bf5b1c45896e65a#0"}
++{"trace_id": "42ee07a255ba3bec49cf4b9d31ece0f7", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "42ee07a255ba3bec49cf4b9d31ece0f7#0"}
++{"trace_id": "78934c82053072e5efb3418bd05e5988", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "78934c82053072e5efb3418bd05e5988#0"}
++{"trace_id": "fe48b220ba8543b0c2ec08b3ef43ab85", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "fe48b220ba8543b0c2ec08b3ef43ab85#0"}
++{"trace_id": "54457b2e4a73a69f85f321d47443ac30", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "54457b2e4a73a69f85f321d47443ac30#0"}
++{"trace_id": "49c2a73b3a405c8a139f81945c3916e1", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "49c2a73b3a405c8a139f81945c3916e1#0"}
++{"trace_id": "1f1dbb30f45532c9824c2722dfa84a66", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "1f1dbb30f45532c9824c2722dfa84a66#0"}
++{"trace_id": "d790ee7c44934dda70567715ca8709b8", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "d790ee7c44934dda70567715ca8709b8#0"}
++{"trace_id": "235ceaaabf9699c5c7f731050fef4022", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "235ceaaabf9699c5c7f731050fef4022#0"}
++{"trace_id": "fe9717031b9313be99cde3c4bcfa7700", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "fe9717031b9313be99cde3c4bcfa7700#0"}
++{"trace_id": "e9fb004d9f13b8fbe6ed38068ef5e342", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "e9fb004d9f13b8fbe6ed38068ef5e342#0"}
++{"trace_id": "611f3372d559f8b0616bb68cead9dd9d", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "611f3372d559f8b0616bb68cead9dd9d#0"}
++{"trace_id": "c1567cfaf2bf6538d06936d1e9395b2d", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "c1567cfaf2bf6538d06936d1e9395b2d#0"}
++{"trace_id": "1093caaaa35d7fc33ca668496a68842c", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "1093caaaa35d7fc33ca668496a68842c#0"}
++{"trace_id": "057df39a6791284faf11390bfa4c03b0", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "057df39a6791284faf11390bfa4c03b0#0"}
++{"trace_id": "7f75105b05ff7786ac981ef0bcec028d", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "7f75105b05ff7786ac981ef0bcec028d#0"}
++{"trace_id": "b10c1dca878b6c4e819275179dca7744", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b10c1dca878b6c4e819275179dca7744#0"}
++{"trace_id": "d07519720c50be652085b731ee9c38de", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "d07519720c50be652085b731ee9c38de#0"}
++{"trace_id": "b42eb1f87659f18cba741140df8b3264", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b42eb1f87659f18cba741140df8b3264#0"}
++{"trace_id": "f3fb6862895cc7edea1dde6a1f2cd60a", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "f3fb6862895cc7edea1dde6a1f2cd60a#0"}
++{"trace_id": "f6f942ccbb41d505f1197562dc385c35", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "f6f942ccbb41d505f1197562dc385c35#0"}
++{"trace_id": "345306195e846a24db91b8cb2434cebb", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "345306195e846a24db91b8cb2434cebb#0"}
++{"trace_id": "f6c9057bf7034b7289c57f2e9500dc61", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "f6c9057bf7034b7289c57f2e9500dc61#0"}
++{"trace_id": "b36a32784da944820f0294d47e80ca8c", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b36a32784da944820f0294d47e80ca8c#0"}
++{"trace_id": "9fdabc417dd1386a8cd30b0287b68aa2", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "9fdabc417dd1386a8cd30b0287b68aa2#0"}
++{"trace_id": "ec5ef32cec1f00b3262d714128f46b42", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "ec5ef32cec1f00b3262d714128f46b42#0"}
++{"trace_id": "33017693f6f8e7b73d69c2f9388a0ebe", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "33017693f6f8e7b73d69c2f9388a0ebe#0"}
++{"trace_id": "6d57af168adc41e7071a61c301b953f4", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "6d57af168adc41e7071a61c301b953f4#0"}
++{"trace_id": "0a89752cf9fb091e6b242bcd5acf69e6", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "0a89752cf9fb091e6b242bcd5acf69e6#0"}
++{"trace_id": "99461950d1137b2594e208ae49b07e0d", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "99461950d1137b2594e208ae49b07e0d#0"}
++{"trace_id": "b32009dc0175a8dba8bd5f20590fde05", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b32009dc0175a8dba8bd5f20590fde05#0"}
++{"trace_id": "9d1f4c48f7701e41cca0825936d54154", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "9d1f4c48f7701e41cca0825936d54154#0"}
++{"trace_id": "bf0ca5a7486e03a6c0024d27e66a2f98", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "bf0ca5a7486e03a6c0024d27e66a2f98#0"}
++{"trace_id": "640cd065d5d92fb1f0298c9dc39035b5", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "640cd065d5d92fb1f0298c9dc39035b5#0"}
++{"trace_id": "247048e0f4009040f21be395dcc11eab", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "247048e0f4009040f21be395dcc11eab#0"}
++{"trace_id": "6600cf6d048b712a9ad826bd6e5a6bc1", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "6600cf6d048b712a9ad826bd6e5a6bc1#0"}
++{"trace_id": "e679290ff40508dd870b4505b4622026", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "e679290ff40508dd870b4505b4622026#0"}
++{"trace_id": "5cce752dfee53b5c649973612a6bd8b2", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "5cce752dfee53b5c649973612a6bd8b2#0"}
++{"trace_id": "d62ba37f1c393a1b675c2910df87e089", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "d62ba37f1c393a1b675c2910df87e089#0"}
++{"trace_id": "b4d3420e3e5572d7b3dbd2ace6825dd0", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b4d3420e3e5572d7b3dbd2ace6825dd0#0"}
++{"trace_id": "54cc93ec4d04dc5908d56945c8202bba", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "54cc93ec4d04dc5908d56945c8202bba#0"}
++{"trace_id": "01fdb9f9a4a40c8ac10ce99778e0cd30", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "01fdb9f9a4a40c8ac10ce99778e0cd30#0"}
++{"trace_id": "0addfc3b4243f9a8f8156779a0296953", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "0addfc3b4243f9a8f8156779a0296953#0"}
++{"trace_id": "ce4583e3b8faedc247225002849c33c1", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "ce4583e3b8faedc247225002849c33c1#0"}
++{"trace_id": "64bce9e854e415f2f466bd462cf63056", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "64bce9e854e415f2f466bd462cf63056#0"}
++{"trace_id": "fa40a4e2c246c574daf5f26a3540e371", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "fa40a4e2c246c574daf5f26a3540e371#0"}
++{"trace_id": "e3261db64cc8bbc45b716f7acdb6280d", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "e3261db64cc8bbc45b716f7acdb6280d#0"}
++{"trace_id": "557906bd816d78dc46bed622ec63e532", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "557906bd816d78dc46bed622ec63e532#0"}
++{"trace_id": "56a3af89fae6e68c1b8a385a3ff588ca", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "56a3af89fae6e68c1b8a385a3ff588ca#0"}
++{"trace_id": "0f2c3e3935e9d7ada77b2e931fdc6b66", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "0f2c3e3935e9d7ada77b2e931fdc6b66#0"}
++{"trace_id": "e9b5c0a6f9031f3ff39c438ee99932c9", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "e9b5c0a6f9031f3ff39c438ee99932c9#0"}
++{"trace_id": "bf7bbbef87e8a3a4d7a778db261d5e51", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "bf7bbbef87e8a3a4d7a778db261d5e51#0"}
++{"trace_id": "bd1d6200b2d313aebcf9bd3e2a1f9f7e", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "bd1d6200b2d313aebcf9bd3e2a1f9f7e#0"}
++{"trace_id": "858f40e104602e469a12bbefd90429b1", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "858f40e104602e469a12bbefd90429b1#0"}
++{"trace_id": "45cd21196bed1e4db29545ee4fb62004", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "45cd21196bed1e4db29545ee4fb62004#0"}
++{"trace_id": "b12b789e3238d7a9f9cd7da7663ed163", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b12b789e3238d7a9f9cd7da7663ed163#0"}
++{"trace_id": "5aa1424fdc17ac65453537981f6401c8", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "5aa1424fdc17ac65453537981f6401c8#0"}
++{"trace_id": "76f849d225d9529e4b2bf670b8dbbd43", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "76f849d225d9529e4b2bf670b8dbbd43#0"}
++{"trace_id": "ec2cb5e4decc3d2ae19c800537fbe5f5", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "ec2cb5e4decc3d2ae19c800537fbe5f5#0"}
++{"trace_id": "57448adadf20cc401589000f86e9efe5", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "57448adadf20cc401589000f86e9efe5#0"}
++{"trace_id": "93a973a3d845c1b4761e7e31c567ef6e", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "93a973a3d845c1b4761e7e31c567ef6e#0"}
++{"trace_id": "a0ef97d283c8de8bedebc5c9cacafbae", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "a0ef97d283c8de8bedebc5c9cacafbae#0"}
++{"trace_id": "69b88c7e2e89ea500e719a91fb48b2e4", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "69b88c7e2e89ea500e719a91fb48b2e4#0"}
++{"trace_id": "69ef0fa73ffb13dc858eb7332f8989b1", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "69ef0fa73ffb13dc858eb7332f8989b1#0"}
++{"trace_id": "ded87e8762686523c153abb73e996aeb", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "ded87e8762686523c153abb73e996aeb#0"}
++{"trace_id": "253b82d858ffd34304854008a54f0c04", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "253b82d858ffd34304854008a54f0c04#0"}
++{"trace_id": "c5fbe155883561cf71b0d60a4292e557", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "c5fbe155883561cf71b0d60a4292e557#0"}
++{"trace_id": "d88a78733e6ccf1a5e5582be045dd9f7", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "d88a78733e6ccf1a5e5582be045dd9f7#0"}
++{"trace_id": "ced654dbd2aae57322ce3cec4fe7e344", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "ced654dbd2aae57322ce3cec4fe7e344#0"}
++{"trace_id": "8dac88f3730927d1f3236d2a7af55fa7", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "8dac88f3730927d1f3236d2a7af55fa7#0"}
++{"trace_id": "1430ef5661cbcf86a12f916858282291", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "1430ef5661cbcf86a12f916858282291#0"}
++{"trace_id": "3bde02ace88eef60092635c7ec2c7fa0", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "3bde02ace88eef60092635c7ec2c7fa0#0"}
++{"trace_id": "281aa65c1aeab2250971bab924ca398f", "label": 0, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "281aa65c1aeab2250971bab924ca398f#0"}
++{"trace_id": "4435c13c0311d3b46bbae4f7d32024c9", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "4435c13c0311d3b46bbae4f7d32024c9#0"}
++{"trace_id": "75a1affa64cc74144ae2c376279866f0", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "75a1affa64cc74144ae2c376279866f0#0"}
++{"trace_id": "b3e1af7cbf217c01d007a28abdd190c1", "label": 1, "source": "human", "ts": "2026-09-16T16:10:00+00:00", "label_id": "b3e1af7cbf217c01d007a28abdd190c1#0"}
+
+diff --git a/analysis/report/review_summary.md b/analysis/report/review_summary.md
+new file mode 100644
+--- /dev/null
++++ b/analysis/report/review_summary.md
+@@ -0,0 +1,17 @@
++# Homework 4 reference review summary
++
++This reference bundle provides the Homework 4 evidence needed to begin Homework 5. It uses the 100 traces from `homework/module-2/hw3-reference.patch`.
++
++## Reviewed sample
++
++The sample contains 100 traces. The review covered order lookup, refunds, cancellations, policy questions, product search, and out of scope requests. The saved label file contains one decision for every trace for the final mode below.
++
++## Final mode
++
++`uninformative_response` asks whether the final reply gives the information the user needs for the next decision without burying it in unnecessary detail. The mode maps to RESP-3 and requires an LLM judge because the correct amount of detail depends on the request.
++
++The boundary changed during review. The first draft treated every short reply as uninformative. Trace `13bc170360f221fe75c16853971b4c0f` is a close negative because the user explicitly asked for yes or no. The final definition judges the reply against the requested level of detail.
++
++The review found 31 traces with the failure and 69 without it. The label file uses the Homework 4 convention: 1 means the failure is present and 0 means it is absent. Homework 5 converts these to Pass and Fail labels before splitting the data.
++
++No new consequential mode appeared in the final 15 traces. This compact reference bundle keeps one mode because Homework 5 requires one judge.

@@ -1,0 +1,113 @@
+# Reference Homework 6 mechanics needed to begin Homework 7.
+#
+# Apply this patch only if you did not finish Homework 6:
+#
+#     git apply homework/module-3/hw6-reference.patch
+#
+# The patch implements the pass metrics and completes the Harbor workflow.
+# It does not invent baseline classifications, GitHub run URLs, or model
+# results. Keep your own evaluation cases and observed results when you
+# completed Homework 6.
+diff --git a/.github/workflows/evals.yml b/.github/workflows/evals.yml
+index 3f9d3b8..44c2952 100644
+--- a/.github/workflows/evals.yml
++++ b/.github/workflows/evals.yml
+@@ -34,10 +34,25 @@ jobs:
+           lfs: true
+       - uses: astral-sh/setup-uv@v5
+       - run: uv sync
+-
+-      # Homework 6: install Harbor 0.23.0.
+-      # Generate the classified tasks in eval_cases/cases.jsonl.
+-      # Run five attempts per task in fresh Docker containers.
+-      # Pass the agent and judge provider keys to Harbor.
+-      # Summarize the job and upload the job files with `if: always()` so a
+-      # failed regression keeps its evidence.
++      - run: uv tool install 'harbor==0.23.0'
++      - run: uv run python scripts/export_harbor_tasks.py
++      - name: Run Harbor evaluations
++        run: |
++          harbor run \
++            -p .harbor/tasks \
++            -a harbor_adapter.agent:OaklineAgent \
++            -m "$OAKLINE_MODEL" \
++            -e docker \
++            --n-attempts 5 \
++            --job-name hw6-evals \
++            --jobs-dir .harbor/jobs \
++            --yes
++      - name: Summarize results
++        if: always()
++        run: uv run python scripts/summarize_harbor_job.py .harbor/jobs/hw6-evals --expected-attempts 5
++      - name: Upload Harbor job
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: hw6-evals
++          path: .harbor/jobs/hw6-evals
+diff --git a/tests/eval/passk.py b/tests/eval/passk.py
+index b65b31b..72df87f 100644
+--- a/tests/eval/passk.py
++++ b/tests/eval/passk.py
+@@ -58,8 +58,13 @@ def pass_at_k(n: int, c: int, k: int) -> float:
+         pass_at_k(8, 6, 4) == 1.0  (only 2 failures, so every 4-subset hits
+                                     a success)
+     """
+-    ### YOUR CODE HERE (hw6)
+-    raise NotImplementedError("hw6: implement pass_at_k")
++    if n < 1:
++        raise ValueError("n must be at least 1")
++    if c < 0 or c > n:
++        raise ValueError("c must be between 0 and n")
++    if k < 1 or k > n:
++        raise ValueError("k must be between 1 and n")
++    return 1.0 if n - c < k else 1.0 - comb(n - c, k) / comb(n, k)
+ 
+ 
+ def pass_hat_k(n: int, c: int, k: int) -> float:
+@@ -90,8 +95,13 @@ def pass_hat_k(n: int, c: int, k: int) -> float:
+         pass_hat_k(8, 6, 4) == C(6,4)/C(8,4) == 15/70 == 0.2142857...
+         pass_hat_k(8, 6, 8) == 0.0  (not all 8 succeeded)
+     """
+-    ### YOUR CODE HERE (hw6)
+-    raise NotImplementedError("hw6: implement pass_hat_k")
++    if n < 1:
++        raise ValueError("n must be at least 1")
++    if c < 0 or c > n:
++        raise ValueError("c must be between 0 and n")
++    if k < 1 or k > n:
++        raise ValueError("k must be between 1 and n")
++    return 0.0 if c < k else comb(c, k) / comb(n, k)
+ 
+ 
+ def case_passes(
+@@ -140,5 +150,27 @@ def case_passes(
+         case_passes("capability", 2, 5, 0.6)     -> pass  (never blocks)
+         case_passes("capability", 1, 5, 0.6)     -> pass  (never blocks)
+     """
+-    ### YOUR CODE HERE (hw6)
+-    raise NotImplementedError("hw6: implement case_passes")
++    if kind not in {"regression", "capability"}:
++        raise ValueError("kind must be regression or capability")
++    if n < 1:
++        raise ValueError("n must be at least 1")
++    if passes < 0 or passes > n:
++        raise ValueError("passes must be between 0 and n")
++    if baseline_pass_rate is not None and not 0 <= baseline_pass_rate <= 1:
++        raise ValueError("baseline_pass_rate must be between 0 and 1")
++
++    if kind == "regression" and passes < n:
++        failed = n - passes
++        return {
++            "decision": "block",
++            "reason": f"regression case failed {failed} of {n} runs",
++        }
++    if kind == "regression":
++        return {"decision": "pass", "reason": f"regression case passed all {n} runs"}
++    baseline = (
++        "not recorded" if baseline_pass_rate is None else str(baseline_pass_rate)
++    )
++    return {
++        "decision": "pass",
++        "reason": f"capability case passed {passes} of {n}, baseline {baseline}, not blocking",
++    }
