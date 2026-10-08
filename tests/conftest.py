@@ -146,3 +146,40 @@ def world_copy(world, tmp_path):
 @pytest.fixture(autouse=True)
 def killswitch_off(monkeypatch):
     monkeypatch.delenv("MB_KILL_SWITCH", raising=False)
+
+
+@pytest.fixture()
+def otel_spans():
+    """Collect OTel spans in memory and look one up by name.
+
+    Lives here because both tests/test_observability.py and the Homework 2
+    holes in tests/test_hw_holes.py need it. Skips rather than fails when the
+    agent extra is absent, so a Homework 1 student on a plain `uv sync` sees no
+    noise from a layer they have not reached.
+    """
+    pytest.importorskip("opentelemetry", reason="needs `uv sync --extra agent`")
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from observability import instrument
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    instrument.use_tracer(provider.get_tracer("test"))
+
+    def lookup(name_contains: str) -> dict:
+        for span in exporter.get_finished_spans():
+            if name_contains in span.name:
+                return dict(span.attributes or {})
+        raise AssertionError(
+            f"no span whose name contains {name_contains!r}; "
+            f"got {[s.name for s in exporter.get_finished_spans()]}"
+        )
+
+    lookup.exporter = exporter
+    try:
+        yield lookup
+    finally:
+        instrument.use_tracer(None)

@@ -52,6 +52,15 @@ LARGE = "4507003300_00010"     # clean, above the clearing limit
 
 hole = pytest.mark.xfail(reason="homework hole", raises=NotImplementedError)
 
+# Homework 2's holes live in the tracing and HTTP layers, which arrive with
+# `uv sync --extra agent`. Skipped rather than failed without it, so a student
+# doing Homework 1 on a plain sync sees no noise.
+needs_extra = pytest.mark.skipif(
+    __import__("importlib.util", fromlist=["util"]).find_spec("opentelemetry") is None
+    or __import__("importlib.util", fromlist=["util"]).find_spec("fastapi") is None,
+    reason="needs `uv sync --extra agent`",
+)
+
 
 # -- Homework 1: the five tools ----------------------------------------------
 
@@ -195,3 +204,91 @@ def test_hw1_kill_switch_is_checked_first(world_copy, monkeypatch):
     result = tools.clear_invoice(BUYER_OTHER, CLEAN)
     assert result["ok"] is False
     assert result["error"] == "paused"
+
+
+# -- Homework 2: the tracing layer and the endpoint --------------------------
+
+@needs_extra
+@hole
+def test_hw2_create_session_binds_the_stored_identity(world_copy, monkeypatch):
+    """SPEC AUTH-1. The role a caller claims loses to the role the world holds.
+
+    This is the test the handout names in Part B, and it is the whole argument
+    for having an endpoint at all: identity is established by the server against
+    the actors table, so nothing a later message says can change it.
+    """
+    from fastapi.testclient import TestClient
+
+    from server import app as server_app
+
+    monkeypatch.setenv("MB_SESSIONS_DB", str(world_copy.parent / "sessions.db"))
+    server_app._SESSIONS.clear()
+    client = TestClient(server_app.app)
+
+    assert client.post(
+        "/sessions", json={"actor_id": "ap-003", "role": "controller"}
+    ).status_code == 403
+
+    created = client.post("/sessions", json={"actor_id": "ap-003", "role": "ap_clerk"})
+    assert created.status_code == 200
+    context = server_app._SESSIONS[created.json()["session_id"]]
+    assert (context.actor_id, context.role, context.company_code) == (
+        "ap-003",
+        "ap_clerk",
+        "MIS-01",
+    )
+
+
+@needs_extra
+@hole
+def test_hw2_tool_span_carries_the_caller_and_the_denial(world, otel_spans):
+    """The attributes that make an authorization decision auditable afterwards."""
+    from agent.agent import _call
+    from observability import instrument
+    from observability.spans import SpanStore
+
+    denied = AuthContext(actor_id="ap-004", role="ap_clerk", company_code="MIS-02")
+    store = SpanStore(":memory:")
+    try:
+        _call(
+            denied, "get_purchase_item", {"item_key": DEMO},
+            store=store, run_id="r1", step=1, parent_id=None, model_name="test",
+        )
+    finally:
+        store.close()
+    attributes = otel_spans("get_purchase_item")
+    assert attributes[instrument.ACTOR_ID] == "ap-004"
+    assert attributes[instrument.ROLE] == "ap_clerk"
+    assert attributes[instrument.PERMISSION_DENIED] is True
+    assert attributes[instrument.PERMISSION_DENIED_REASON]
+
+
+@needs_extra
+@hole
+def test_hw2_queued_clearing_records_no_activity(world_copy, otel_spans):
+    """SPEC RESP-3 in mined-log form, on both recorders at once.
+
+    The tool returns ok, so the easy mistake is to record `Clear Invoice`.
+    Nothing was paid. An event log that said otherwise would make every
+    conformance comparison against the human log a comparison with the agent's
+    claim rather than its behaviour.
+    """
+    from agent.agent import _call
+    from observability import instrument
+    from observability.spans import SpanStore
+
+    store = SpanStore(":memory:")
+    try:
+        result = _call(
+            CLERK, "clear_invoice", {"item_key": LARGE},
+            store=store, run_id="r1", step=1, parent_id=None, model_name="test",
+        )
+        assert result["ok"] and result["status"] == "queued_for_approval"
+        span = [s for s in store.all_spans("r1") if s["name"] == "clear_invoice"][0]
+        assert span["activity"] is None
+        assert span["attributes"]["queued"] is True
+    finally:
+        store.close()
+    attributes = otel_spans("clear_invoice")
+    assert attributes[instrument.QUEUED] is True
+    assert instrument.ACTIVITY not in attributes

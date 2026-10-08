@@ -20,12 +20,6 @@ pytest.importorskip("opentelemetry", reason="tracing needs `uv sync --extra agen
 pytest.importorskip("fastapi", reason="the endpoint needs `uv sync --extra agent`")
 
 from fastapi.testclient import TestClient  # noqa: E402
-from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E402
-    InMemorySpanExporter,
-)
-
 from agent.agent import _call, run_session  # noqa: E402
 from agent.auth import AuthContext  # noqa: E402
 from observability import instrument  # noqa: E402
@@ -39,35 +33,12 @@ OTHER_COMPANY = "ap-004"      # an AP clerk in MIS-02
 
 
 @pytest.fixture()
-def exported():
-    """Collect OTel spans in memory for the duration of one test."""
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    instrument.use_tracer(provider.get_tracer("test"))
-    try:
-        yield exporter
-    finally:
-        instrument.use_tracer(None)
-
-
-@pytest.fixture()
 def client(world_copy, monkeypatch):
     """The endpoint, against a throwaway world and a throwaway session store."""
     monkeypatch.setenv("MB_SESSIONS_DB", str(world_copy.parent / "sessions.db"))
     monkeypatch.setenv("MB_SESSION_SECRET", "test-secret")
     server_app._SESSIONS.clear()
     return TestClient(server_app.app)
-
-
-def _attributes(exporter, name_contains: str) -> dict:
-    for span in exporter.get_finished_spans():
-        if name_contains in span.name:
-            return dict(span.attributes or {})
-    raise AssertionError(
-        f"no span whose name contains {name_contains!r}; "
-        f"got {[s.name for s in exporter.get_finished_spans()]}"
-    )
 
 
 # -- the identity the server established, not the one a message claims -------
@@ -124,7 +95,7 @@ def test_the_session_context_comes_from_the_world(client):
 
 # -- what a tool span records ------------------------------------------------
 
-def test_tool_span_carries_the_authenticated_caller(world, exported):
+def test_tool_span_carries_the_authenticated_caller(world, otel_spans):
     store = SpanStore(":memory:")
     try:
         _call(
@@ -133,13 +104,13 @@ def test_tool_span_carries_the_authenticated_caller(world, exported):
         )
     finally:
         store.close()
-    attributes = _attributes(exported, "get_purchase_item")
+    attributes = otel_spans("get_purchase_item")
     assert attributes[instrument.ACTOR_ID] == "ap-003"
     assert attributes[instrument.ROLE] == "ap_clerk"
     assert attributes[instrument.ITEM_KEY] == DEMO
 
 
-def test_permission_denied_is_recorded_on_every_call_not_only_denied_ones(world, exported):
+def test_permission_denied_is_recorded_on_every_call_not_only_denied_ones(world, otel_spans):
     """An absent attribute and a false one are different claims.
 
     A denial rate computed over spans that carry the flag only when it is true
@@ -153,24 +124,24 @@ def test_permission_denied_is_recorded_on_every_call_not_only_denied_ones(world,
             store=store, run_id="r1", step=1, parent_id=None, model_name="test",
         )
         assert allowed["ok"]
-        allowed_attributes = _attributes(exported, "get_purchase_item")
+        allowed_attributes = otel_spans("get_purchase_item")
         assert allowed_attributes[instrument.PERMISSION_DENIED] is False
         assert instrument.PERMISSION_DENIED_REASON not in allowed_attributes
 
-        exported.clear()
+        otel_spans.exporter.clear()
         refused = _call(
             denied_ctx, "get_purchase_item", {"item_key": DEMO},
             store=store, run_id="r2", step=1, parent_id=None, model_name="test",
         )
         assert refused["error"] == "permission_denied"
-        refused_attributes = _attributes(exported, "get_purchase_item")
+        refused_attributes = otel_spans("get_purchase_item")
         assert refused_attributes[instrument.PERMISSION_DENIED] is True
         assert refused_attributes[instrument.PERMISSION_DENIED_REASON]
     finally:
         store.close()
 
 
-def test_the_root_span_carries_the_prompt_version(world, exported):
+def test_the_root_span_carries_the_prompt_version(world, otel_spans):
     """Module 2 groups traces by the prompt that produced them."""
     from agent.agent import ModelStep, ScriptedModel, prompt_version
 
@@ -182,7 +153,7 @@ def test_the_root_span_carries_the_prompt_version(world, exported):
         )
     finally:
         store.close()
-    attributes = _attributes(exported, instrument.ROOT_SPAN_NAME)
+    attributes = otel_spans(instrument.ROOT_SPAN_NAME)
     assert attributes[instrument.PROMPT_VERSION] == prompt_version()
     assert attributes[instrument.SCENARIO_ID] == "probe"
 
@@ -190,7 +161,7 @@ def test_the_root_span_carries_the_prompt_version(world, exported):
 # -- the two recorders must agree --------------------------------------------
 
 def test_both_recorders_agree_that_a_queued_clearing_is_not_an_activity(
-    world_copy, exported
+    world_copy, otel_spans
 ):
     """SPEC RESP-3, in mined-log form, asserted on both pipelines at once.
 
@@ -214,12 +185,12 @@ def test_both_recorders_agree_that_a_queued_clearing_is_not_an_activity(
     finally:
         store.close()
 
-    otel = _attributes(exported, "clear_invoice")
+    otel = otel_spans("clear_invoice")
     assert otel[instrument.QUEUED] is True
     assert instrument.ACTIVITY not in otel
 
 
-def test_both_recorders_agree_that_a_real_clearing_is_an_activity(world_copy, exported):
+def test_both_recorders_agree_that_a_real_clearing_is_an_activity(world_copy, otel_spans):
     """The contrast case, so the test above cannot pass by recording nothing."""
     store = SpanStore(":memory:")
     try:
@@ -233,7 +204,7 @@ def test_both_recorders_agree_that_a_real_clearing_is_an_activity(world_copy, ex
     finally:
         store.close()
 
-    otel = _attributes(exported, "clear_invoice")
+    otel = otel_spans("clear_invoice")
     assert otel[instrument.ACTIVITY] == "Clear Invoice"
     assert instrument.QUEUED not in otel
 
@@ -257,7 +228,7 @@ def test_tracing_is_off_when_nothing_is_configured(world, monkeypatch):
         store.close()
 
 
-def test_identity_survives_something_else_owning_the_trace_root(world, exported):
+def test_identity_survives_something_else_owning_the_trace_root(world, otel_spans):
     """Regression, and the reason the langfuse.trace.* attributes exist.
 
     Starlette 1.7 activates its own OTel middleware whenever an SDK is
@@ -282,7 +253,7 @@ def test_identity_survives_something_else_owning_the_trace_root(world, exported)
     finally:
         store.close()
 
-    inner = _attributes(exported, instrument.ROOT_SPAN_NAME)
+    inner = otel_spans(instrument.ROOT_SPAN_NAME)
     assert inner[instrument.LF_SESSION_ID] == "s1"
     assert inner[instrument.LF_USER_ID] == "ap-003"
     assert inner[instrument.LF_METADATA + "scenario_id"] == "probe"
@@ -291,7 +262,7 @@ def test_identity_survives_something_else_owning_the_trace_root(world, exported)
     assert inner[instrument.ACTOR_ID] == "ap-003"
 
 
-def test_mb_attributes_are_not_replaced_by_the_vendor_ones(world, exported):
+def test_mb_attributes_are_not_replaced_by_the_vendor_ones(world, otel_spans):
     """Both vocabularies, on purpose: mb.* is what survives a change of backend
     and what process/otlp.py already uses for the human log."""
     from agent.agent import ModelStep, ScriptedModel
@@ -304,7 +275,7 @@ def test_mb_attributes_are_not_replaced_by_the_vendor_ones(world, exported):
         )
     finally:
         store.close()
-    attributes = _attributes(exported, instrument.ROOT_SPAN_NAME)
+    attributes = otel_spans(instrument.ROOT_SPAN_NAME)
     for key in (instrument.ACTOR_ID, instrument.ROLE, instrument.RUN_ID,
                 instrument.SESSION_ID, instrument.PROMPT_VERSION):
         assert key in attributes, key

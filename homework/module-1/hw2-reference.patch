@@ -1,121 +1,174 @@
 # Reference implementations of the Homework 2 holes.
 #
-# Homework 3 runs every scenario through the session and message endpoints
-# that Homework 2 asks you to implement. Homework 2 was optional. If you did
-# not complete it, apply this patch from the repository root before starting
-# the server:
+# Homework 3 runs every scenario through the session and message endpoints that
+# Homework 2 asks you to implement, and reads the resulting traces. Homework 2
+# is optional. If you did not complete it, apply this from the repository root
+# before starting the server:
 #
 #     git apply homework/module-1/hw2-reference.patch
 #
 # If you completed Homework 2, keep your own implementation and do not apply
-# the patch. The patch fills create_session and post_message in server/app.py
-# and record_tool_result and _set_permission_denied_attributes in
-# observability/instrument.py.
-diff --git a/observability/instrument.py b/observability/instrument.py
-index f6b2b17..14ad0a8 100644
---- a/observability/instrument.py
-+++ b/observability/instrument.py
-@@ -122,10 +122,11 @@ def record_tool_result(ctx: "AuthContext", result: dict[str, Any]) -> None:
-     span = trace.get_current_span()
-     if not span.is_recording():
-         return
+# this. It will not apply cleanly over your code, which is the intended outcome.
+#
+# It fills record_tool_result, _set_permission_denied_attributes and
+# record_activity in observability/instrument.py, and create_session and
+# post_message in server/app.py.
+#
+# Generated from 5d6eddf, as the exact inverse of hw2-holes.patch.
+diff --git b/observability/instrument.py a/observability/instrument.py
+index 010d87a..cbfbf9b 100644
+--- b/observability/instrument.py
++++ a/observability/instrument.py
+@@ -399,8 +399,12 @@ def record_tool_result(span: "Span", ctx: "AuthContext", result: dict[str, Any])
+     enforcement becomes auditable after the fact. The smoke report counts
+     permission denials from them, and Module 3 asserts on them.
+     """
 -    ### YOUR CODE HERE (HW2)
--    raise NotImplementedError(
--        "HW2: add authenticated caller and permission attributes to the tool span"
--    )
-+    span.set_attribute("oakline.user_role", ctx.role)
-+    span.set_attribute("oakline.user_id", str(ctx.user_id))
-+    if ctx.role == "merchant" and ctx.store_id is not None:
-+        span.set_attribute("oakline.store_id", str(ctx.store_id))
-+    _set_permission_denied_attributes(span, result)
+-    raise NotImplementedError("HW2: record the authenticated caller on the tool span")
++    otel = current_span()
++    for key, value in _actor_attributes(ctx).items():
++        span.attributes.setdefault(key.removeprefix("mb."), value)
++        if otel.is_recording():
++            otel.set_attribute(key, value)
++    _set_permission_denied_attributes(span, otel, result)
  
  
  def _set_permission_denied_attributes(
-@@ -149,5 +150,7 @@ def _set_permission_denied_attributes(
-     the smoke report counts them and Module 3 asserts on them. This is the one place in the
-     course where you touch instrumentation by hand.
+@@ -413,8 +417,15 @@ def _set_permission_denied_attributes(
+     looked, the second says the call was allowed. A denial rate computed over
+     spans that only carry the attribute when it is true is not a rate.
      """
 -    ### YOUR CODE HERE (HW2)
--    raise NotImplementedError("HW2: set the oakline.permission_denied span attribute")
+-    raise NotImplementedError("HW2: set the permission-denied attributes")
 +    denied = isinstance(result, dict) and result.get("error") == "permission_denied"
-+    span.set_attribute("oakline.permission_denied", bool(denied))
++    span.attributes[PERMISSION_DENIED.removeprefix("mb.")] = bool(denied)
++    if otel.is_recording():
++        otel.set_attribute(PERMISSION_DENIED, bool(denied))
 +    if denied:
-+        span.set_attribute("oakline.permission_denied.reason", str(result.get("reason") or ""))
-diff --git a/server/app.py b/server/app.py
-index 3828638..ee13798 100644
---- a/server/app.py
-+++ b/server/app.py
-@@ -123,8 +123,34 @@ def create_session(body: SessionCreate) -> dict[str, Any]:
-     session id and a signed token. The token payload must contain session_id,
-     user_id, role, store_id, and issued_at.
++        reason = str(result.get("reason") or "")
++        span.attributes[PERMISSION_DENIED_REASON.removeprefix("mb.")] = reason
++        if otel.is_recording():
++            otel.set_attribute(PERMISSION_DENIED_REASON, reason)
+ 
+ 
+ def record_activity(span: "Span", activity: str | None, result: dict[str, Any]) -> None:
+@@ -434,5 +445,20 @@ def record_activity(span: "Span", activity: str | None, result: dict[str, Any])
+     reported as queued, never as paid. So the activity is dropped and
+     `mb.queued` is set instead.
+     """
+-    ### YOUR CODE HERE (HW2)
+-    raise NotImplementedError("HW2: decide and record whether this call was a business activity")
++    otel = current_span()
++    if not (activity and span.ok):
++        return
++    if result.get("status") == "queued_for_approval":
++        span.activity = None
++        span.attributes[QUEUED.removeprefix("mb.")] = True
++        if otel.is_recording():
++            otel.set_attribute(QUEUED, True)
++        return
++    span.activity = activity
++    if otel.is_recording():
++        otel.set_attribute(ACTIVITY, activity)
++    amount = result.get("amount_eur")
++    if isinstance(amount, (int, float)):
++        span.value_cents = int(round(amount * 100))
++        if otel.is_recording():
++            otel.set_attribute(VALUE_CENTS, span.value_cents)
+diff --git b/server/app.py a/server/app.py
+index 0de417d..1f7b23c 100644
+--- b/server/app.py
++++ a/server/app.py
+@@ -168,8 +168,40 @@ def create_session(body: SessionCreate) -> dict[str, Any]:
+     a signed token whose payload carries session_id, actor_id, role,
+     company_code, purchasing_group and issued_at.
      """
 -    ### YOUR CODE HERE (HW2)
 -    raise NotImplementedError("HW2: implement POST /sessions")
 +    if body.role not in ROLES:
-+        raise HTTPException(status_code=400, detail=f"unknown role {body.role!r}")
-+    conn = db.connect()
-+    try:
-+        user = db.get_user(conn, body.user_id)
-+    finally:
-+        conn.close()
-+    if user is None:
-+        raise HTTPException(status_code=404, detail=f"unknown user {body.user_id}")
-+    if user.role != body.role:
++        raise HTTPException(
++            status_code=400, detail=f"unknown role {body.role!r}; known: {', '.join(ROLES)}"
++        )
++    with db.connection() as connection:
++        actor = db.get_actor(connection, body.actor_id)
++    if actor is None:
++        raise HTTPException(status_code=404, detail=f"unknown actor {body.actor_id!r}")
++    if actor["role"] != body.role:
++        # The claim loses to the record. This is the whole point of the
++        # endpoint: a caller cannot promote themselves by asserting a role.
 +        raise HTTPException(
 +            status_code=403,
-+            detail=f"user {user.id} has role '{user.role}', not '{body.role}'",
++            detail=f"actor {actor['actor_id']} has role {actor['role']!r}, not {body.role!r}",
 +        )
-+    ctx = AuthContext(user_id=user.id, role=user.role, store_id=user.store_id)
++    context = AuthContext(
++        actor_id=actor["actor_id"],
++        role=actor["role"],
++        company_code=actor["company_code"],
++        purchasing_group=actor["purchasing_group"],
++    )
 +    session_id = uuid.uuid4().hex
-+    session = SQLiteSession(session_id, str(SESSIONS_DB))
-+    _SESSIONS[session_id] = (ctx, session)
++    _SESSIONS[session_id] = context
 +    token = create_token(
 +        {
 +            "session_id": session_id,
-+            "user_id": ctx.user_id,
-+            "role": ctx.role,
-+            "store_id": ctx.store_id,
++            "actor_id": context.actor_id,
++            "role": context.role,
++            "company_code": context.company_code,
++            "purchasing_group": context.purchasing_group,
 +            "issued_at": int(time.time()),
 +        }
 +    )
-+    return {"session_id": session_id, "token": token}
++    return {"session_id": session_id, "token": token, "role": context.role}
  
  
- def _authorize(session_id: str, authorization: str | None) -> AuthContext:
-@@ -158,8 +184,34 @@ async def post_message(
-     gen_ai.output.messages on the root span as JSON arrays of OTel GenAI
-     messages with role and parts fields.
+ @app.post("/sessions/{session_id}/messages")
+@@ -186,8 +218,47 @@ def post_message(
+     role, the prompt version, the scenario id when supplied, and the OTel GenAI
+     input and output messages.
      """
 -    ### YOUR CODE HERE (HW2)
 -    raise NotImplementedError("HW2: implement the traced message endpoint")
-+    ctx = _authorize(session_id, authorization)
-+    _, session = _SESSIONS[session_id]
-+    agent = build_agent(ctx, model=body.model)
++    context = _authorize(session_id, authorization)
 +    version = prompt_version()
-+    capture = os.environ.get("TRACELOOP_TRACE_CONTENT", "false").lower() == "true"
-+    with _tracer.start_as_current_span("oakline.session_message") as span:
-+        if span.is_recording():
-+            span.set_attribute("oakline.session_id", session_id)
-+            span.set_attribute("oakline.user_role", ctx.role)
-+            span.set_attribute("oakline.user_id", str(ctx.user_id))
-+            span.set_attribute("oakline.prompt_version", version)
-+            if body.scenario_id:
-+                span.set_attribute("oakline.scenario_id", body.scenario_id)
-+            if capture:
-+                span.set_attribute(
-+                    "gen_ai.input.messages",
-+                    json.dumps([{"role": "user", "parts": [{"type": "text", "content": body.message}]}]),
-+                )
-+        result = await Runner.run(
-+            agent, body.message, session=session, context=ctx, max_turns=MAX_TURNS
++    sessions = SessionStore()
++    spans = SpanStore(str(DEFAULT_SPANS))
++    try:
++        history = sessions.history(session_id)
++        result: SessionResult = run_session(
++            context,
++            body.message,
++            _model(body.model),
++            store=spans,
++            session_id=session_id,
++            scenario_id=body.scenario_id,
++            history=history,
 +        )
-+        reply = str(result.final_output)
-+        if span.is_recording() and capture:
-+            span.set_attribute(
-+                "gen_ai.output.messages",
-+                json.dumps([{"role": "assistant", "parts": [{"type": "text", "content": reply}]}]),
-+            )
-+    return {"session_id": session_id, "reply": reply, "prompt_version": version}
++        sessions.append(
++            session_id,
++            [
++                {"role": "user", "content": body.message},
++                {"role": "assistant", "content": result.reply},
++            ],
++        )
++        # Which business activities the run actually contributed to the event
++        # log, returned beside the reply because a reply is not evidence. A run
++        # that says "I have cleared the invoice" while contributing no `Clear
++        # Invoice` activity is the exact failure this repo exists to surface.
++        activities = [
++            span["activity"] for span in spans.all_spans(result.run_id) if span.get("activity")
++        ]
++    finally:
++        spans.close()
++        sessions.close()
++    return {
++        "session_id": session_id,
++        "run_id": result.run_id,
++        "reply": result.reply,
++        "prompt_version": version,
++        "steps": result.steps,
++        "tool_order": [call["name"] for call in result.tool_calls],
++        "activities_recorded": activities,
++    }
  
  
- @app.get("/health")
+ def _model(name: str) -> Any:

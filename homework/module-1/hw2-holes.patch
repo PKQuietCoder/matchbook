@@ -1,0 +1,193 @@
+# Homework 2 holes: empty the tracing recorders and the two endpoints.
+#
+# Apply from the repository root:
+#
+#     git apply homework/module-1/hw2-holes.patch
+#
+# This removes the body of five functions and leaves every signature and
+# docstring in place:
+#
+#   observability/instrument.py  record_tool_result
+#                                _set_permission_denied_attributes
+#                                record_activity
+#   server/app.py                create_session
+#                                post_message
+#
+# Unlike the Homework 1 holes, these stop the agent running until you fill
+# them, and that is deliberate. agent/agent.py's _call seam absorbs a
+# NotImplementedError from a *tool*, because a half-built agent that still
+# holds a conversation is useful. It does not absorb one from a *recorder*: an
+# instrumentation layer that failed quietly would leave a partially recorded
+# event log, and a log that is wrong is worse than a log that is missing.
+#
+# Expect tests/test_observability.py to go red. Run the hole tests with
+# --runxfail to see each contract on its own:
+#
+#     uv run pytest --runxfail tests/test_hw_holes.py -k hw2
+#     uv run pytest --runxfail -vv tests/test_hw_holes.py -k create_session_binds
+#
+# Needs the agent extra: uv sync --extra agent
+#
+# To undo, whatever state your copy is in:
+#
+#     git checkout -- observability/instrument.py server/app.py
+#
+# Generated from 5d6eddf. If either file changes, regenerate rather than
+# hand-editing.
+diff --git a/observability/instrument.py b/observability/instrument.py
+index cbfbf9b..010d87a 100644
+--- a/observability/instrument.py
++++ b/observability/instrument.py
+@@ -399,12 +399,8 @@ def record_tool_result(span: "Span", ctx: "AuthContext", result: dict[str, Any])
+     enforcement becomes auditable after the fact. The smoke report counts
+     permission denials from them, and Module 3 asserts on them.
+     """
+-    otel = current_span()
+-    for key, value in _actor_attributes(ctx).items():
+-        span.attributes.setdefault(key.removeprefix("mb."), value)
+-        if otel.is_recording():
+-            otel.set_attribute(key, value)
+-    _set_permission_denied_attributes(span, otel, result)
++    ### YOUR CODE HERE (HW2)
++    raise NotImplementedError("HW2: record the authenticated caller on the tool span")
+ 
+ 
+ def _set_permission_denied_attributes(
+@@ -417,15 +413,8 @@ def _set_permission_denied_attributes(
+     looked, the second says the call was allowed. A denial rate computed over
+     spans that only carry the attribute when it is true is not a rate.
+     """
+-    denied = isinstance(result, dict) and result.get("error") == "permission_denied"
+-    span.attributes[PERMISSION_DENIED.removeprefix("mb.")] = bool(denied)
+-    if otel.is_recording():
+-        otel.set_attribute(PERMISSION_DENIED, bool(denied))
+-    if denied:
+-        reason = str(result.get("reason") or "")
+-        span.attributes[PERMISSION_DENIED_REASON.removeprefix("mb.")] = reason
+-        if otel.is_recording():
+-            otel.set_attribute(PERMISSION_DENIED_REASON, reason)
++    ### YOUR CODE HERE (HW2)
++    raise NotImplementedError("HW2: set the permission-denied attributes")
+ 
+ 
+ def record_activity(span: "Span", activity: str | None, result: dict[str, Any]) -> None:
+@@ -445,20 +434,5 @@ def record_activity(span: "Span", activity: str | None, result: dict[str, Any])
+     reported as queued, never as paid. So the activity is dropped and
+     `mb.queued` is set instead.
+     """
+-    otel = current_span()
+-    if not (activity and span.ok):
+-        return
+-    if result.get("status") == "queued_for_approval":
+-        span.activity = None
+-        span.attributes[QUEUED.removeprefix("mb.")] = True
+-        if otel.is_recording():
+-            otel.set_attribute(QUEUED, True)
+-        return
+-    span.activity = activity
+-    if otel.is_recording():
+-        otel.set_attribute(ACTIVITY, activity)
+-    amount = result.get("amount_eur")
+-    if isinstance(amount, (int, float)):
+-        span.value_cents = int(round(amount * 100))
+-        if otel.is_recording():
+-            otel.set_attribute(VALUE_CENTS, span.value_cents)
++    ### YOUR CODE HERE (HW2)
++    raise NotImplementedError("HW2: decide and record whether this call was a business activity")
+diff --git a/server/app.py b/server/app.py
+index 1f7b23c..0de417d 100644
+--- a/server/app.py
++++ b/server/app.py
+@@ -168,40 +168,8 @@ def create_session(body: SessionCreate) -> dict[str, Any]:
+     a signed token whose payload carries session_id, actor_id, role,
+     company_code, purchasing_group and issued_at.
+     """
+-    if body.role not in ROLES:
+-        raise HTTPException(
+-            status_code=400, detail=f"unknown role {body.role!r}; known: {', '.join(ROLES)}"
+-        )
+-    with db.connection() as connection:
+-        actor = db.get_actor(connection, body.actor_id)
+-    if actor is None:
+-        raise HTTPException(status_code=404, detail=f"unknown actor {body.actor_id!r}")
+-    if actor["role"] != body.role:
+-        # The claim loses to the record. This is the whole point of the
+-        # endpoint: a caller cannot promote themselves by asserting a role.
+-        raise HTTPException(
+-            status_code=403,
+-            detail=f"actor {actor['actor_id']} has role {actor['role']!r}, not {body.role!r}",
+-        )
+-    context = AuthContext(
+-        actor_id=actor["actor_id"],
+-        role=actor["role"],
+-        company_code=actor["company_code"],
+-        purchasing_group=actor["purchasing_group"],
+-    )
+-    session_id = uuid.uuid4().hex
+-    _SESSIONS[session_id] = context
+-    token = create_token(
+-        {
+-            "session_id": session_id,
+-            "actor_id": context.actor_id,
+-            "role": context.role,
+-            "company_code": context.company_code,
+-            "purchasing_group": context.purchasing_group,
+-            "issued_at": int(time.time()),
+-        }
+-    )
+-    return {"session_id": session_id, "token": token, "role": context.role}
++    ### YOUR CODE HERE (HW2)
++    raise NotImplementedError("HW2: implement POST /sessions")
+ 
+ 
+ @app.post("/sessions/{session_id}/messages")
+@@ -218,47 +186,8 @@ def post_message(
+     role, the prompt version, the scenario id when supplied, and the OTel GenAI
+     input and output messages.
+     """
+-    context = _authorize(session_id, authorization)
+-    version = prompt_version()
+-    sessions = SessionStore()
+-    spans = SpanStore(str(DEFAULT_SPANS))
+-    try:
+-        history = sessions.history(session_id)
+-        result: SessionResult = run_session(
+-            context,
+-            body.message,
+-            _model(body.model),
+-            store=spans,
+-            session_id=session_id,
+-            scenario_id=body.scenario_id,
+-            history=history,
+-        )
+-        sessions.append(
+-            session_id,
+-            [
+-                {"role": "user", "content": body.message},
+-                {"role": "assistant", "content": result.reply},
+-            ],
+-        )
+-        # Which business activities the run actually contributed to the event
+-        # log, returned beside the reply because a reply is not evidence. A run
+-        # that says "I have cleared the invoice" while contributing no `Clear
+-        # Invoice` activity is the exact failure this repo exists to surface.
+-        activities = [
+-            span["activity"] for span in spans.all_spans(result.run_id) if span.get("activity")
+-        ]
+-    finally:
+-        spans.close()
+-        sessions.close()
+-    return {
+-        "session_id": session_id,
+-        "run_id": result.run_id,
+-        "reply": result.reply,
+-        "prompt_version": version,
+-        "steps": result.steps,
+-        "tool_order": [call["name"] for call in result.tool_calls],
+-        "activities_recorded": activities,
+-    }
++    ### YOUR CODE HERE (HW2)
++    raise NotImplementedError("HW2: implement the traced message endpoint")
+ 
+ 
+ def _model(name: str) -> Any:
