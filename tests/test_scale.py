@@ -35,13 +35,26 @@ def test_build_is_not_quadratic_in_case_count():
     """
     small, large = 4_000, 8_000
 
-    start = time.perf_counter()
-    _build(small)
-    small_seconds = time.perf_counter() - start
+    # Warm up and take the best of three, because the thing being measured is
+    # smaller than the noise around it. At these sizes `build()` takes single-
+    # digit milliseconds, so one cold measurement against one warm one is
+    # dominated by interpreter warmth and GC timing rather than by complexity:
+    # run on its own this test saw 2.0x, and run after the rest of the suite --
+    # which leaves the interpreter warm, shrinking the FIRST timing -- it saw
+    # 3.1x on the same unchanged code. Best-of-N filters scheduler noise in the
+    # only direction it can go, and a genuine quadratic cannot hide in it: the
+    # regression this guards against ran ~340x slow at 2,000 cases.
+    def best_of(count: int, repeats: int = 3) -> float:
+        _build(count)  # discarded
+        timings = []
+        for _ in range(repeats):
+            start = time.perf_counter()
+            _build(count)
+            timings.append(time.perf_counter() - start)
+        return min(timings)
 
-    start = time.perf_counter()
-    _build(large)
-    large_seconds = time.perf_counter() - start
+    small_seconds = best_of(small)
+    large_seconds = best_of(large)
 
     ratio = large_seconds / max(small_seconds, 1e-6)
     assert ratio < 3.0, (

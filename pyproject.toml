@@ -59,6 +59,7 @@ packages = [
     "logs",
     "analysis",
     "server",
+    "scenarios",
 ]
 
 [tool.pytest.ini_options]
