@@ -10,14 +10,33 @@ requires-python = ">=3.12"
 # discovery, conformance, rendering, the agent, the span store, the bridge --
 # is standard library.
 #
-# No optional groups are declared, deliberately. An earlier version declared an
-# `agent` extra of five packages (anthropic, opentelemetry-sdk, fastapi,
-# uvicorn, rank-bm25) and a `fast` extra of numpy, and NOT ONE of them was
-# imported anywhere: `uv sync --extra agent` installed five dependencies to no
-# effect. A dependency is declared when something imports it. The live model
-# adapter and the HTTP endpoint will each bring their own.
+# The `agent` extra below was once removed for a good reason, and it is back for
+# a different one. The removed version listed five packages (anthropic,
+# opentelemetry-sdk, fastapi, uvicorn, rank-bm25) of which NOT ONE was imported
+# anywhere: `uv sync --extra agent` installed five dependencies to no effect.
+# The rule that produced the deletion stands -- a dependency is declared when
+# something imports it -- and each package here now satisfies it:
+#
+#   anthropic                           agent/model_anthropic.py
+#   fastapi, uvicorn                    server/app.py
+#   opentelemetry-sdk, -exporter-otlp   observability/instrument.py
+#
+# rank-bm25 and numpy are still absent, because still nothing imports them.
+#
+# Nothing in `process/` may import any of them. That is not a convention but a
+# test: tests/test_offline_mining.py blocks `fastapi` and `opentelemetry` by
+# name in a subprocess and then mines a real log anyway.
 dependencies = [
     "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+agent = [
+    "anthropic>=0.40",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "opentelemetry-sdk>=1.29",
+    "opentelemetry-exporter-otlp-proto-http>=1.29",
 ]
 
 [dependency-groups]
@@ -29,8 +48,24 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 # `server` was listed here before it existed, and it is not a package. Add a
-# directory to this list when it has an __init__.py and code in it.
-packages = ["process", "bridge", "agent", "observability", "seed", "logs"]
+# directory to this list when it has an __init__.py and code in it. `server`
+# now qualifies; `analysis` always did and was missed.
+packages = [
+    "process",
+    "bridge",
+    "agent",
+    "observability",
+    "seed",
+    "logs",
+    "analysis",
+    "server",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Stated rather than inherited, because the homework depends on it. A hole test
+# is marked xfail, so it passes quietly on a finished repo (as an xpass) and
+# fails loudly under `--runxfail`, which is how the handout makes an unfinished
+# function visible. With xfail_strict = true an xpass would become a failure
+# and a completed homework would look broken.
+xfail_strict = false

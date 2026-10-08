@@ -28,6 +28,28 @@ Process Discovery Contest (2016-2025)
   Used in: the correctness harness (tests/pdc/), fetched on demand, not committed.
 
 --------------------------------------------------------------------------------
+Development-time containers (observability/docker-compose.yml)
+
+  The local trace stack is NOT redistributed by Matchbook, is not linked into
+  it, and is not required to run anything here: with the stack down,
+  observability/instrument.py records nothing and every command still works.
+  It is listed because this repository holds its datasets to a stated licence
+  and owes its own dependencies the same scrutiny.
+
+  Langfuse            MIT. https://github.com/langfuse/langfuse
+                      Its ee/ directory is commercially licensed; unused here.
+  ClickHouse          Apache-2.0
+  PostgreSQL          PostgreSQL License
+  MinIO               AGPL-3.0. Run locally as a separate, unmodified
+                      upstream image, which §13 does not reach. Matchbook
+                      links no AGPL code -- the reason this repo hand-writes
+                      its mining library instead of using a third-party mining framework.
+  Redis               BSD-3-Clause, pinned at 7.2. Deliberate: Redis 7.4 and
+                      later are RSALv2/SSPL, which is not OSI-approved, and
+                      taking an upstream compose file unread would have
+                      acquired it silently.
+
+--------------------------------------------------------------------------------
 Everything else in this repository -- the mining library, the agent, the policy
 corpus, SPEC.md and facts.yaml -- is original work and is NOT derived from any
 third-party dataset.

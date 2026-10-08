@@ -30,6 +30,7 @@ from typing import Any, Callable, Protocol, Sequence
 from agent import db, tools as tool_module
 from agent.auth import AuthContext
 from agent.killswitch import explain as killswitch_explain, level as killswitch_level
+from observability import instrument
 from observability.spans import MODEL, REQUEST, TOOL, SpanStore
 from process import config
 
@@ -188,7 +189,7 @@ def _call(
     item_key = arguments.get("item_key")
     activity = TOOL_ACTIVITY.get(name)
 
-    with store.span(
+    with instrument.tool_span(name, arguments), store.span(
         run_id=run_id,
         name=name,
         kind=TOOL,
@@ -224,24 +225,14 @@ def _call(
         span.ok = bool(result.get("ok"))
         span.error = None if span.ok else str(result.get("error"))
         span.attributes["result"] = result
-        if not span.ok and result.get("error") == "permission_denied":
-            span.attributes["permission_denied"] = True
-            span.attributes["permission_denied.reason"] = result.get("reason")
 
-        # Only a successful write that actually changed the world contributes a
-        # business activity to the process. A denied or paused attempt is a
-        # span -- visible, countable -- but it is not a step that happened.
-        if activity and span.ok:
-            span.activity = activity
-            if result.get("status") == "queued_for_approval":
-                # A queued clearing did not clear. Recording it as `Clear
-                # Invoice` would make the agent's log claim a payment that
-                # never happened -- the mined-log form of SPEC RESP-3.
-                span.activity = None
-                span.attributes["queued"] = True
-            amount = result.get("amount_eur")
-            if isinstance(amount, (int, float)):
-                span.value_cents = int(round(amount * 100))
+        # One call site for both recorders. The SQLite span store is
+        # authoritative -- the bridge mines the event log from it -- and the
+        # OTel export feeds the trace UI; routing both through these two
+        # functions is what stops them disagreeing about who called the tool,
+        # or about what reached the event log. See observability/instrument.py.
+        instrument.record_tool_result(span, ctx, result)
+        instrument.record_activity(span, activity, result)
         return result
 
 
@@ -266,8 +257,17 @@ def run_session(
     scenario_id: str | None = None,
     max_steps: int = MAX_STEPS,
     prompt_template: str | None = None,
+    history: Sequence[dict[str, Any]] | None = None,
 ) -> SessionResult:
-    """Run one user message to a final reply, recording spans throughout."""
+    """Run one user message to a final reply, recording spans throughout.
+
+    `history` carries the earlier turns of a conversation, so a session can
+    continue rather than restart. It holds prior user/assistant/tool messages
+    in the order they happened and is supplied by whoever owns the session --
+    the HTTP endpoint in `server/app.py`, never the caller's own message. The
+    system prompt is always rebuilt from `ctx` and stays first, so a resumed
+    conversation cannot inherit a stale identity.
+    """
     version = prompt_version(prompt_template)
     run_id = store.start_run(
         session_id=session_id,
@@ -279,18 +279,27 @@ def run_session(
         killswitch=killswitch_level(),
     )
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": render_system_prompt(ctx, prompt_template)},
-        {"role": "user", "content": message},
+        {"role": "system", "content": render_system_prompt(ctx, prompt_template)}
     ]
+    messages.extend(dict(turn) for turn in history or ())
+    messages.append({"role": "user", "content": message})
     store.message(run_id, 0, "user", message)
 
     calls: list[dict[str, Any]] = []
     reply = ""
     steps = 0
 
-    with store.span(
+    with instrument.request_span(
+        ctx,
+        message,
         run_id=run_id,
-        name="mb.session_message",
+        session_id=session_id,
+        prompt_version=version,
+        scenario_id=scenario_id,
+        killswitch=killswitch_level(),
+    ) as otel_request, store.span(
+        run_id=run_id,
+        name=instrument.ROOT_SPAN_NAME,
         kind=REQUEST,
         step=0,
         role=ctx.role,
@@ -300,7 +309,7 @@ def run_session(
     ) as request_span:
         for step in range(1, max_steps + 1):
             steps = step
-            with store.span(
+            with instrument.model_span(step, model.name) as otel_model, store.span(
                 run_id=run_id,
                 name=f"model.step.{step}",
                 kind=MODEL,
@@ -309,6 +318,7 @@ def run_session(
                 model=model.name,
             ) as model_span:
                 decision = model.step(messages)
+                instrument.record_usage(otel_model, model.name, decision.usage)
                 model_span.ok = True
                 model_span.attributes["tool_calls"] = [call.name for call in decision.tool_calls]
                 # Tokens belong to the model call that spent them. A tool span
@@ -350,6 +360,7 @@ def run_session(
         request_span.ok = True
         request_span.attributes["steps"] = steps
         request_span.attributes["tool_sequence"] = [call["name"] for call in calls]
+        instrument.record_reply(otel_request, reply)
 
     store.end_run(run_id)
     return SessionResult(

@@ -1,0 +1,160 @@
+# Langfuse v3, self-hosted locally, for reading the agent's traces.
+#
+# `observability/spans.py` is still the authoritative record -- the bridge mines
+# the event log from it and the cost report prices it. This stack exists so a
+# run can also be *read*: span tree, tool order, the authenticated caller, the
+# permission decision, tokens.
+#
+#   docker compose -f observability/docker-compose.yml up -d
+#   open http://localhost:3000   ->  student@example.com / matchbook-dev-pass
+#
+# Nothing in Matchbook requires it. With the stack down, or with the
+# LANGFUSE_* variables unset, observability/instrument.py records nothing and
+# every command still works; tests/test_offline_mining.py proves the mining
+# half never touches any of this.
+#
+# LICENSING, because this repo polices its dataset licences and must police its
+# own dependencies the same way. These are development-time containers: nothing
+# here is redistributed by Matchbook and nothing is linked into it. Langfuse is
+# MIT (its `ee/` directory is commercially licensed and unused here),
+# ClickHouse Apache-2.0, PostgreSQL the PostgreSQL licence, and MinIO AGPL-3.0.
+#
+# Redis is pinned to 7.2 for a licensing reason, not a technical one: 7.4
+# onwards is RSALv2/SSPL, which is not OSI-approved. 7.2 is the last BSD-3
+# release. A repo that excludes CC BY-NC datasets by written policy should not
+# acquire an SSPL service by taking an upstream compose file unread.
+#
+# See NOTICE. Every tag is pinned so an upgrade is a decision, not an accident.
+
+name: matchbook-observability
+
+services:
+  langfuse-web:
+    image: langfuse/langfuse:3.144.0
+    depends_on:
+      postgres: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: matchbook-dev-nextauth-secret
+      SALT: matchbook-dev-salt
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      REDIS_CONNECTION_STRING: redis://redis:6379
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      # Seeded at first boot, so .env.example can ship working local keys and
+      # the handout does not have to walk you through a signup form. These are
+      # development credentials for a local container; they are not secrets.
+      LANGFUSE_INIT_ORG_ID: matchbook
+      LANGFUSE_INIT_ORG_NAME: Matchbook
+      LANGFUSE_INIT_PROJECT_ID: matchbook-dev
+      LANGFUSE_INIT_PROJECT_NAME: matchbook-dev
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-matchbook-dev
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-matchbook-dev
+      LANGFUSE_INIT_USER_EMAIL: student@example.com
+      LANGFUSE_INIT_USER_NAME: Matchbook Student
+      LANGFUSE_INIT_USER_PASSWORD: matchbook-dev-pass
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3.144.0
+    depends_on:
+      postgres: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      SALT: matchbook-dev-salt
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      REDIS_CONNECTION_STRING: redis://redis:6379
+      TELEMETRY_ENABLED: "false"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    user: "101:101"
+    ports:
+      # Exposed so the Homework 3 smoke report can query it directly.
+      - "8123:8123"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server /data --address ":9000" --console-address ":9001"'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - minio-data:/data
+
+  redis:
+    image: redis:7.2-alpine
+    command: --requirepass ""
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  clickhouse-logs:
+  minio-data:
