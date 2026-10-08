@@ -170,7 +170,28 @@ def cmd_compare(args) -> int:
     shared = sum(1 for row in rows if not row["only_in"])
     print(f"shared edges: {shared}  only in {args.left}: "
           f"{sum(1 for r in rows if r['only_in'] == 'left')}  only in {args.right}: "
-          f"{sum(1 for r in rows if r['only_in'] == 'right')}\n")
+          f"{sum(1 for r in rows if r['only_in'] == 'right')}")
+
+    # Guard the methodological trap: two logs that share no activity names
+    # produce a tidy-looking table of 100% differences that means nothing. The
+    # usual cause is comparing the agent's `attempts` layer -- which invents
+    # activity names on purpose -- against the human log.
+    left_names = {left.activities.name_of(a) for a in left_graph.activities}
+    right_names = {right.activities.name_of(a) for a in right_graph.activities}
+    overlap = left_names & right_names
+    if not overlap:
+        print(
+            "\nWARNING: these logs share no activity names, so every row below is "
+            "'only in' one side and the comparison carries no information. Compare the "
+            "agent's BUSINESS layer against the human log -- the attempts layer adds "
+            "activity names ('Attempted ...') that the human log cannot contain by design."
+        )
+    else:
+        print(
+            f"shared activity alphabet: {len(overlap)} of "
+            f"{len(left_names | right_names)} names"
+        )
+    print()
     print(f"{'transition':<60} {args.left[:12]:>12} {args.right[:12]:>12}  delta")
     for row in rows[: args.top]:
         label = f"{row['from']} -> {row['to']}"

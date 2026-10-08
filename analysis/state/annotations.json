@@ -1,0 +1,4 @@
+{
+  "_comment": "Human open-coding notes, appended by `python -m analysis.review annotate`. Empty on purpose: failure modes are supposed to come from reading traces, not from the repo asserting them. Candidate modes derived from the authored fixtures live in patterns.json, marked as such.",
+  "annotations": []
+}

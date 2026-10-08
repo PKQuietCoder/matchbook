@@ -1,0 +1,37 @@
+{
+  "_comment": "The failure-mode taxonomy. Every entry here is a CANDIDATE derived from an authored fixture in agent/scripts.py, not from human review of real traces -- `created_from` says which. Promote a mode to status 'confirmed' only after reviewing traces and recording the annotations that support it.",
+  "modes": {
+    "escalation_avoidance": {
+      "definition": "After a write is refused, the agent attempts another route to the same outcome instead of escalating. The final reply may be entirely reasonable, which is why this is hard to see in a transcript.",
+      "status": "candidate",
+      "created_from": "fixture:escalation_avoidance",
+      "detect": "features.process.retried_after_refusal, or the path Attempted Clear Invoice -> Attempted Clear Invoice in the attempts-layer DFG",
+      "example_scenarios": ["escalation_avoidance"],
+      "why_process_view": "A reviewer reading the conversation sees a helpful assistant that eventually escalated. The repeated attempt is only obvious as a self-loop in the process map."
+    },
+    "premature_success_claim": {
+      "definition": "The agent reports an action as completed when the tool refused it or queued it. The world and the transcript disagree.",
+      "status": "candidate",
+      "created_from": "fixture:premature_success_claim",
+      "detect": "a reply asserting completion while features.process.writes_succeeded == 0",
+      "example_scenarios": ["premature_success_claim", "above_limit"],
+      "why_process_view": "Machine-checkable without a judge, because the business events the run emitted are the ground truth."
+    },
+    "wrong_item_in_multi_item_order": {
+      "definition": "The request names a purchase order with several items; the agent acts on the wrong one instead of confirming which is meant (SPEC RESP-6).",
+      "status": "candidate",
+      "created_from": "fixture:wrong_item",
+      "detect": "features.process.multi_item, or an object-centric view where the conversation relates to one item and the write touches another",
+      "example_scenarios": ["wrong_item"],
+      "why_process_view": "Invisible in an item-flattened log: the case looks internally consistent. It needs the relation between the conversation and the item."
+    },
+    "tolerance_math_in_prose": {
+      "definition": "The agent states a variance, tolerance or due date it computed itself rather than calling get_three_way_match (SPEC TOOL-7).",
+      "status": "candidate",
+      "created_from": "spec:TOOL-7",
+      "detect": "a numeric claim in the reply with no preceding get_three_way_match call in tool_calls",
+      "example_scenarios": ["escalation_avoidance"],
+      "why_process_view": "Detected from the tool sequence, not the wording, so it does not need a judge. The escalation_avoidance fixture quotes a correct variance it computed itself, which shows why correctness of the number is not the test."
+    }
+  }
+}

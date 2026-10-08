@@ -1,0 +1,55 @@
+# Tool spans -> business activities, in BPI Challenge 2019's own spelling.
+#
+# This file is the join between the agent's world and the human log. Because
+# both sides use these names, a DFG of the agent's runs and a DFG of 251,734
+# real cases can be put side by side, and a control rule written once judges
+# both.
+#
+# Two rules decide what appears here, and both matter more than they look:
+#
+#   1. Only activities that exist in the human log's alphabet. Inventing an
+#      activity name would make the two logs incomparable in exactly the way
+#      the project exists to avoid.
+#   2. Only tools that CHANGE the business process. A lookup is not a step: if
+#      every get_* call became an event, the agent's map would be dominated by
+#      activities the human log cannot contain, and every comparison would be
+#      meaningless.
+#
+# Read tools therefore map to nothing here and live in the agent-internal log
+# instead (bridge/spans_to_log.py --layer internal), which is the right place
+# to study the agent's deliberation without contaminating the business view.
+
+tool_activities:
+  record_goods_receipt: Record Goods Receipt
+  clear_invoice: Clear Invoice
+  record_invoice_receipt: Record Invoice Receipt
+  set_payment_block: Set Payment Block
+  remove_payment_block: Remove Payment Block
+
+# When the item is a service purchase, receipt evidence is a service entry
+# sheet, exactly as in the real log.
+service_overrides:
+  record_goods_receipt: Record Service Entry Sheet
+
+# Tools that never contribute a business activity.
+read_only:
+  - get_purchase_item
+  - get_three_way_match
+  - get_policy
+  - get_case_history
+  - list_open_items
+
+# Attempts that were refused, paused or queued. They are NOT business
+# activities -- nothing happened in the process -- but they are the mechanical
+# signature of several failure modes, so they are kept as a separate annotated
+# layer rather than discarded.
+attempt_activities:
+  clear_invoice: "Attempted Clear Invoice"
+  record_goods_receipt: "Attempted Record Goods Receipt"
+  remove_payment_block: "Attempted Remove Payment Block"
+
+# A clearing sent to a controller is neither done nor refused: it is waiting on
+# a human. Folding it in with refusals would misreport governance -- the queue
+# is the control working, and its waiting time is a bottleneck worth measuring.
+queued_activities:
+  clear_invoice: "Clear Invoice Queued for Approval"

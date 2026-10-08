@@ -106,3 +106,43 @@ def snapshot_log():
         log, REPO_ROOT / "logs" / "snapshot" / "bpic19-sample-cases.csv.gz"
     )
     return log
+
+
+@pytest.fixture()
+def world(tmp_path_factory):
+    """A seeded world in a temp directory. Tests never touch data/."""
+    import os
+
+    from seed.generate import generate_world
+
+    root = tmp_path_factory.mktemp("world")
+    db = root / "matchbook.db"
+    policies = root / "policies"
+    generate_world(db_path=db, policies_dir=policies, quiet=True)
+    previous = {key: os.environ.get(key) for key in ("MB_DB", "MB_POLICIES_DIR")}
+    os.environ["MB_DB"] = str(db)
+    os.environ["MB_POLICIES_DIR"] = str(policies)
+    yield {"db": db, "policies": policies}
+    for key, value in previous.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+@pytest.fixture()
+def world_copy(world, tmp_path):
+    """A per-test copy, for tests that write. Re-seeding is the sandbox reset."""
+    import os
+    import shutil
+
+    copy = tmp_path / "matchbook.db"
+    shutil.copy(world["db"], copy)
+    os.environ["MB_DB"] = str(copy)
+    yield copy
+    os.environ["MB_DB"] = str(world["db"])
+
+
+@pytest.fixture(autouse=True)
+def killswitch_off(monkeypatch):
+    monkeypatch.delenv("MB_KILL_SWITCH", raising=False)

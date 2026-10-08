@@ -304,6 +304,7 @@ class EventLog:
                     precision=self.precision.get(position, SECOND),
                     tie_broken=position in self.tie_broken,
                     attributes=self.event_attributes.get(position),
+                    sort_hint=position,
                 )
         return builder.build()
 
@@ -352,6 +353,7 @@ class EventLogBuilder:
         self._precision: list[str] = []
         self._tie_broken_in: list[bool] = []
         self._attributes: list[dict[str, Any] | None] = []
+        self._sort_hint: list[int] = []
         self._case_attributes: dict[str, dict[str, Any]] = {}
 
     def add(
@@ -365,7 +367,15 @@ class EventLogBuilder:
         precision: str = SECOND,
         tie_broken: bool = False,
         attributes: dict[str, Any] | None = None,
+        sort_hint: int = 0,
     ) -> None:
+        """Append one event.
+
+        `sort_hint` resolves order *within* a timestamp when the true order is
+        known -- the sub-second component of an agent span, for instance. It
+        orders before `activity_rank` and, unlike the rank, does NOT mark the
+        event as tie-broken, because nothing was assumed.
+        """
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -378,6 +388,7 @@ class EventLogBuilder:
         self._precision.append(precision)
         self._tie_broken_in.append(tie_broken)
         self._attributes.append(attributes or None)
+        self._sort_hint.append(int(sort_hint))
 
     def add_case_attributes(self, case_id: str, attributes: dict[str, Any] | None) -> None:
         if not attributes:
@@ -395,6 +406,7 @@ class EventLogBuilder:
             key=lambda i: (
                 self._case_of[i],
                 self._timestamp[i],
+                self._sort_hint[i],
                 rank.get(name_of(self._activity[i]), 0),
                 i,
             ),
@@ -413,6 +425,7 @@ class EventLogBuilder:
         case_offsets = array("i", [0])
         previous_case: str | None = None
         previous_timestamp: int | None = None
+        previous_hint: int | None = None
 
         for new_position, old_position in enumerate(order):
             case_id = self._case_of[old_position]
@@ -422,6 +435,7 @@ class EventLogBuilder:
                 case_ids.append(case_id)
                 previous_case = case_id
                 previous_timestamp = None
+                previous_hint = None
             case_number = len(case_ids) - 1
 
             timestamp = self._timestamp[old_position]
@@ -434,13 +448,19 @@ class EventLogBuilder:
             precision = self._precision[old_position]
             if precision != SECOND:
                 log.precision[new_position] = precision
-            # A tie the sort had to break: same case, same instant, and we did
-            # not arrive here as the first event of the case.
+            # A tie the sort had to break: same case, same instant, no
+            # sub-second evidence to separate them, and not the case's first
+            # event. Where a sort_hint distinguishes them the order is known,
+            # so it is not recorded as an assumption.
+            hint = self._sort_hint[old_position]
             if self._tie_broken_in[old_position] or (
-                previous_timestamp is not None and timestamp == previous_timestamp
+                previous_timestamp is not None
+                and timestamp == previous_timestamp
+                and hint == previous_hint
             ):
                 log.tie_broken.add(new_position)
             previous_timestamp = timestamp
+            previous_hint = hint
 
             extra = self._attributes[old_position]
             if extra:

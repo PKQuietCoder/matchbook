@@ -85,6 +85,65 @@ What that reports on the committed sample of real data:
   this rule measures *log completeness*, not misconduct. It is the best teaching rule
   in the catalogue for exactly that reason.
 
+## The agent, end to end with no API key
+
+The agent half runs from scripted sessions, so the whole pipeline — world,
+tools, spans, the bridge, the mined log, conformance, failure analysis — is
+reproducible with no model key and no budget. A live model adapter plugs into
+the same `Model` protocol in `agent/agent.py`.
+
+```bash
+uv run python -m seed.generate                       # deterministic world + policy corpus
+uv run python -m seed.validate                       # the corpus must agree with facts.yaml
+uv run python -m agent --list-scripts
+uv run python -m agent --all-scripts --reset         # 10 sessions -> build/spans.db
+
+uv run python -m bridge.spans_to_log build/spans.db --log-id agent-business --layer business
+uv run python -m bridge.spans_to_log build/spans.db --log-id agent-attempts --layer attempts
+uv run python -m process compare bpic19-sample agent-business
+uv run python -m analysis.review list --sort retries
+```
+
+### What the bridge decides, and why it matters
+
+**The case is the business object, not the conversation.** Keying the agent's
+log on the run id would produce a log whose cases are conversations, which can
+never be compared with a log whose cases are purchase-order items. Keying on
+`item_key` means two conversations about one item form **one** case — which is
+how three clearing attempts on a blocked item, spread across two separate
+sessions, show up as a single three-step case.
+
+**Three layers, three questions.** `business` records only what actually
+happened and uses only activity names the human log can contain, so it is the
+comparable one. `attempts` adds refused, paused and queued attempts as distinct
+activities — this is where escalation avoidance becomes a visible path, and it
+is deliberately *not* comparable to the human log. `internal` keeps every span
+including lookups and model steps, for studying the agent rather than the
+process.
+
+### Findings from the ten scripted sessions
+
+- **Escalation avoidance is a self-loop, not a sentence.** The run that chases a
+  blocked payment produces `Attempted Clear Invoice → Attempted Clear Invoice`
+  in the attempts-layer map. Its final reply reads like a helpful assistant that
+  escalated appropriately. `analysis.review list --sort retries` puts it first;
+  reading transcripts in arrival order would not.
+- **The same run quietly commits a second failure.** It quotes a €120.00
+  variance it derived itself, with no `get_three_way_match` call anywhere in the
+  run (SPEC TOOL-7). The number happens to be right, which is the point: the
+  failure is detectable from the tool sequence, not from the wording.
+- **A well-guarded agent produces an almost empty business log.** Ten sessions
+  yielded 21 tool calls and just **2 business events**, because the controls
+  correctly refused nearly everything. That is a real methodological result: for
+  a guarded agent on exception work, model-based conformance has little to chew
+  on, and the governance signal lives in the attempts layer. Conformance
+  checking needs runs that legitimately complete work.
+- **Separation of duties is stateful, and it bites.** The pinned purchase orders
+  were created *and* released by the same buyer, so no buyer could legitimately
+  receipt them — correct behaviour that made the clean path undemonstrable until
+  the world gained a buyer who had not released them. Authorization that depends
+  on case history cannot be checked by reading a record.
+
 ## Repo map
 
 ```
@@ -98,6 +157,7 @@ logs/
   sample.py               derive the committed snapshot + SAMPLE.md disclosure
   snapshot/               the pinned CC BY 4.0 BPI 2019 sample (committed)
   helpdesk/               the MIT Helpdesk log: the fast fixture (committed)
+SPEC.md                   the prescriptive process, with requirement IDs
 process/                  THE MINING LIBRARY -- stdlib only
   log.py                  the columnar EventLog; the tie-break audit
   store.py schema.sql     the SQLite event store; every log side by side
@@ -107,8 +167,37 @@ process/                  THE MINING LIBRARY -- stdlib only
   rules.py                declarative P2P control conformance
   viz.py                  DOT for real graphs, hand-written SVG for small ones
   cli.py                  python -m process <command>
-tests/                    offline; no API keys
+seed/
+  controls.py             the pure control oracle: match, tolerance, approval, SoD
+  generate.py             deterministic world; pinned demo items
+  policies.py             the policy corpus, rendered from facts.yaml
+  validate.py             fails the seed if a document disagrees with the facts
+agent/
+  auth.py                 the access matrix, including the stateful duty rule
+  tools.py                the five tools; clear_invoice's check order is spec'd
+  agent.py                prompt, prompt_version, the _call() seam, the loop
+  scripts.py              scripted sessions, including deliberate failure fixtures
+  killswitch.py           off / clearing / payments / readonly
+observability/
+  spans.py schema.sql     OTel-shaped spans into local SQLite; no Docker
+bridge/
+  spans_to_log.py         *** spans -> event log: the case notion and the alphabet
+  activity_map.yaml       which tools are business activities, and which are not
+analysis/
+  normalize.py            one normalized trace record, with process features
+  review.py               open coding, sorted so the interesting traces come first
+  state/                  append-only annotations, labels, and the mode taxonomy
+tests/                    offline; no API keys; 87 tests
 ```
+
+## What is not built yet
+
+Milestone 1 is the vertical slice. Still to come, in order: discovery (process
+tree, inductive cuts, Petri nets, token replay) validated against the CC0
+Process Discovery Contest corpus; alignments and precision; the k-rollout
+variability engine; the fitted synthetic twin with its own ground-truth answer
+key; the live chat + process-map explorer; the object-centric view; and the
+course layer of handouts and judges. See `design.md`.
 
 ## Data and licensing
 
