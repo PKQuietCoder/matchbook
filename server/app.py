@@ -28,6 +28,7 @@ import json
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +53,52 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SPANS = REPO_ROOT / "build" / "spans.db"
 SCRIPTED = "scripted"
 
-app = FastAPI(title="Matchbook agent", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Load .env, then start and stop tracing around the server's life.
+
+    .env is read here rather than inside the model adapter: the tracer needs
+    LANGFUSE_* before the first request, and loading the file lazily meant it
+    had already given up.
+    """
+    load_env()
+    configured = instrument.configure(service_name="matchbook-server")
+    print(banner())
+    print(
+        f"tracing -> {instrument.langfuse_host()}" if configured
+        else "tracing off (no LANGFUSE_* keys, or the agent extra is not installed)"
+    )
+    try:
+        yield
+    finally:
+        instrument.shutdown()
+
+
+# `telemetry={"tracing": False}` turns OFF FastAPI's own OpenTelemetry
+# middleware, and that is a deliberate choice rather than a dislike of HTTP
+# spans.
+#
+# Starlette 1.7 activates the middleware whenever an SDK is installed, which
+# makes the ASGI span the root of every trace and `mb.session_message` its
+# child. Langfuse v3 reads a trace's name, session, user, tags, input and
+# output from its ROOT span, so with the middleware on, every trace arrived
+# named `POST /sessions/{session_id}/messages` with no actor and no scenario id
+# at trace level -- findable only by opening it. Homework 3 selects traces by
+# scenario id in bulk and fails when a scenario has none, and Homework 4 groups
+# a review by session, so trace-level identity is load-bearing here.
+#
+# Measured, not assumed: with the middleware on, `sessionId`, `userId` and
+# `tags` came back null and `input`/`output` empty; with it off they are
+# populated. The lost HTTP spans cost little -- the status code is in uvicorn's
+# log and the route is one endpoint -- and turning it off also gives this
+# repo's traces the same shape as the sibling course's, which are rooted at
+# `oakline.session_message`.
+app = FastAPI(
+    title="Matchbook agent",
+    version="0.1.0",
+    lifespan=lifespan,
+    telemetry={"tracing": False, "operation_spans": False, "metrics": False},
+)
 
 # session_id -> the AuthContext the server established for it. Identity lives
 # here and in the token; never in the request body of a message.
@@ -231,19 +277,3 @@ def _model(name: str) -> Any:
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "banner": banner(), "prompt_version": prompt_version()}
-
-
-@app.on_event("startup")
-def _start_tracing() -> None:
-    load_env()
-    configured = instrument.configure(service_name="matchbook-server")
-    print(banner())
-    print(
-        "tracing -> langfuse" if configured
-        else "tracing off (no LANGFUSE_* keys, or the OTel extra is not installed)"
-    )
-
-
-@app.on_event("shutdown")
-def _stop_tracing() -> None:
-    instrument.shutdown()

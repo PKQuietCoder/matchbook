@@ -76,6 +76,25 @@ OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 INPUT_MESSAGES = "gen_ai.input.messages"
 OUTPUT_MESSAGES = "gen_ai.output.messages"
 
+# Langfuse's documented keys for TRACE-level fields, and the one
+# vendor-specific thing in this module. Without them a trace has no session, no
+# user and no tags in the UI -- `mb.*` attributes alone land in metadata, where
+# they can be read but not filtered or grouped on. Module 2 reviews traces
+# grouped by session and Homework 3 selects them by scenario id in bulk, so
+# these are load-bearing rather than decorative.
+#
+# Langfuse v3 reads them from the trace's ROOT span. That is why
+# `server/app.py` disables FastAPI's own OTel middleware: with it on, the root
+# was an ASGI span and these attributes sat on a child, where v3 does not look.
+# Measured both ways; see the comment on `app` in server/app.py.
+LF_TRACE_NAME = "langfuse.trace.name"
+LF_SESSION_ID = "langfuse.session.id"
+LF_USER_ID = "langfuse.user.id"
+LF_TRACE_INPUT = "langfuse.trace.input"
+LF_TRACE_OUTPUT = "langfuse.trace.output"
+LF_TRACE_TAGS = "langfuse.trace.tags"
+LF_METADATA = "langfuse.trace.metadata."
+
 ROOT_SPAN_NAME = "mb.session_message"
 DEFAULT_HOST = "http://localhost:3000"
 OTLP_PATH = "/api/public/otel/v1/traces"
@@ -233,6 +252,12 @@ def _messages(role: str, text: str) -> str:
     return json.dumps([{"role": role, "parts": [{"type": "text", "content": text}]}])
 
 
+def _stamp(span: Any, attributes: dict[str, Any]) -> None:
+    if span.is_recording():
+        for key, value in attributes.items():
+            span.set_attribute(key, value)
+
+
 @contextmanager
 def request_span(
     ctx: "AuthContext",
@@ -244,27 +269,62 @@ def request_span(
     scenario_id: str | None = None,
     killswitch: str = "off",
 ) -> Iterator[Any]:
-    """The root span for one request, mirroring Matchbook's own `mb.session_message`."""
+    """The span for one request, mirroring Matchbook's own `mb.session_message`.
+
+    Identity is recorded in two vocabularies, deliberately.
+
+    `mb.*` is ours and vendor-neutral. It matches what `process/otlp.py` writes
+    when exporting the human event log, so the agent's spans and the real
+    company's spans describe themselves the same way, and it is what survives if
+    this repo ever points at a different backend.
+
+    `langfuse.trace.*` is the backend's documented route to trace-level fields.
+    It is what makes a trace filterable by session, actor and scenario instead
+    of merely inspectable -- which is the difference between Module 2 reviewing
+    100 traces and reading them one at a time.
+    """
+    attributes = _actor_attributes(ctx)
+    attributes[RUN_ID] = run_id
+    attributes[SESSION_ID] = session_id
+    attributes[PROMPT_VERSION] = prompt_version
+    attributes[KILLSWITCH] = killswitch
+    if scenario_id:
+        attributes[SCENARIO_ID] = scenario_id
+
+    # The same facts twice, in two vocabularies. mb.* is ours and
+    # vendor-neutral, matching what process/otlp.py exports for the human log.
+    # langfuse.trace.* is the vendor's documented route to trace-level fields,
+    # which is the only thing that survives Starlette owning the trace root.
+    attributes[LF_TRACE_NAME] = ROOT_SPAN_NAME
+    attributes[LF_SESSION_ID] = session_id
+    attributes[LF_USER_ID] = ctx.actor_id
+    attributes[f"{LF_METADATA}role"] = ctx.role
+    attributes[f"{LF_METADATA}company_code"] = ctx.company_code
+    attributes[f"{LF_METADATA}prompt_version"] = prompt_version
+    attributes[f"{LF_METADATA}run_id"] = run_id
+    if scenario_id:
+        attributes[f"{LF_METADATA}scenario_id"] = scenario_id
+    attributes[LF_TRACE_TAGS] = [value for value in (ctx.role, scenario_id) if value]
+
     with tracer().start_as_current_span(ROOT_SPAN_NAME) as span:
-        if span.is_recording():
-            attributes = _actor_attributes(ctx)
-            attributes[RUN_ID] = run_id
-            attributes[SESSION_ID] = session_id
-            attributes[PROMPT_VERSION] = prompt_version
-            attributes[KILLSWITCH] = killswitch
-            if scenario_id:
-                attributes[SCENARIO_ID] = scenario_id
-            for key, value in attributes.items():
-                span.set_attribute(key, value)
-            if trace_content():
-                span.set_attribute(INPUT_MESSAGES, _messages("user", message))
+        _stamp(span, attributes)
+        if span.is_recording() and trace_content():
+            span.set_attribute(INPUT_MESSAGES, _messages("user", message))
+            span.set_attribute(LF_TRACE_INPUT, message)
         yield span
 
 
 def record_reply(span: Any, reply: str) -> None:
-    """Attach the final assistant reply to the root span."""
-    if span.is_recording() and trace_content():
-        span.set_attribute(OUTPUT_MESSAGES, _messages("assistant", reply))
+    """Attach the final assistant reply to our span and to the trace root.
+
+    Both, for the reason `request_span` explains: Langfuse reads a trace's own
+    input and output from the root span, which under uvicorn belongs to
+    Starlette rather than to us.
+    """
+    if not trace_content() or not span.is_recording():
+        return
+    span.set_attribute(OUTPUT_MESSAGES, _messages("assistant", reply))
+    span.set_attribute(LF_TRACE_OUTPUT, reply)
 
 
 @contextmanager
