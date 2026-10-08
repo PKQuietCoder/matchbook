@@ -1,0 +1,51 @@
+{
+ "assertions_withheld": [
+  "event duration (the source records instants)",
+  "span nesting (the source records none)",
+  "per-event outcome (no status is emitted)",
+  "case-level actor (96.3% of BPI 2019 cases involve more than one resource)"
+ ],
+ "attribution": "van Dongen, Boudewijn (2019): BPI Challenge 2019. Version 1. 4TU.ResearchData. https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1 Licensed CC BY 4.0.",
+ "case_notion": "purchase-order item",
+ "counts": {
+  "bytes_written": 299832,
+  "cases": 50,
+  "distinct_activities": 24,
+  "events": 369,
+  "events_without_resource": 0,
+  "largest_case_events": 37,
+  "largest_line_bytes": 299831,
+  "lines": 1,
+  "non_second_precision_events": 0,
+  "spans": 419,
+  "tie_broken_events": 78,
+  "tie_broken_share": 0.2114,
+  "value_cents_total": 454454800,
+  "whole_minute_events": 369,
+  "whole_minute_share": 1.0
+ },
+ "doi": "10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1",
+ "filters": {
+  "max_cases": 50
+ },
+ "license": "CC BY 4.0",
+ "log_id": "bpic19-sample",
+ "order_assumption": "facts.yaml activity_rank",
+ "schema_version": "1",
+ "scope": "matchbook.process.otlp",
+ "service_name": "bpic19-sample+max_cases=50",
+ "source": "logs/snapshot/bpic19-sample-events.csv.gz",
+ "timestamp_precision_measured": "minute",
+ "top_activities": {
+  "Clear Invoice": 50,
+  "Create Purchase Order Item": 50,
+  "Record Goods Receipt": 51,
+  "Record Invoice Receipt": 51,
+  "SRM: Awaiting Approval": 11,
+  "SRM: Complete": 11,
+  "SRM: Created": 11,
+  "SRM: Document Completed": 11,
+  "SRM: In Transfer to Execution Syst.": 15,
+  "Vendor creates invoice": 49
+ }
+}

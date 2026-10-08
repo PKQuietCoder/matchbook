@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 
+from process import otlp
 from process.log import EventLogBuilder
 
 
@@ -70,3 +71,43 @@ def test_select_preserves_relative_order_at_size():
     assert subset.case_count == 250
     for trace in subset.traces():
         assert trace.activities == ("Create Purchase Order Item", "Record Invoice Receipt")
+
+
+def test_otlp_export_is_linear_in_events(tmp_path):
+    """Doubling the cases must not quadruple the export.
+
+    The export walks every case and every event once. The way that stops being
+    true is an accidental per-span scan of something already emitted -- the
+    span-id uniqueness set is per case for exactly that reason, and a repo-wide
+    one would look fine on the 50-case fixture and quadratic on the real log.
+    """
+    small, large = 2_000, 4_000
+
+    def export(case_count, name):
+        """Best of three, after a warm-up.
+
+        The work here takes ~50ms, so a single GC pause or a busy core is a
+        bigger effect than the thing being measured. Best-of-N keeps the guard
+        sensitive to an asymptotic change -- which shows up in every run --
+        while ignoring a one-off spike, which is what made the first version of
+        this test flaky. Measured ratio on an idle machine is 1.9 to 2.1.
+        """
+        log = _build(case_count)
+        header = otlp.header_of(log)
+        best = float("inf")
+        for attempt in range(4):
+            start = time.perf_counter()
+            otlp.write_otlp(otlp.traces_of_log(log), tmp_path / f"{name}{attempt}.ndjson", header)
+            elapsed = time.perf_counter() - start
+            if attempt:  # the first pass is the warm-up
+                best = min(best, elapsed)
+        return best
+
+    small_seconds = export(small, "small")
+    large_seconds = export(large, "large")
+
+    ratio = large_seconds / max(small_seconds, 1e-6)
+    assert ratio < 3.0, (
+        f"doubling the case count took {ratio:.1f}x longer "
+        f"({small_seconds:.3f}s -> {large_seconds:.3f}s); the export is not linear"
+    )

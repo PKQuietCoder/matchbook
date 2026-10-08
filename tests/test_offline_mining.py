@@ -27,6 +27,7 @@ MINING_MODULES = [
     "process.viz",
     "process.config",
     "process.cli",
+    "process.otlp",
 ]
 
 # `anthropic` is here because it is now the agent half's model dependency. The
@@ -61,7 +62,21 @@ csvio.read_case_attributes(log, {str(REPO_ROOT / "logs" / "snapshot" / "bpic19-s
 graph = dfg.build(log)
 report = rules.report(log, config.load_facts())
 assert log.case_count > 2000 and len(graph) > 50 and report["total_violations"] > 0
-print("OFFLINE OK", log.case_count, len(graph), report["total_violations"])
+
+# The OTLP exporter is in here because its whole claim is that emitting
+# OpenTelemetry spans needs no `opentelemetry` package. With that import
+# blocked, write real spans and read them back into the same log.
+import tempfile
+
+from process import otlp
+destination = tempfile.mkdtemp() + "/offline.ndjson.gz"
+stats = otlp.write_otlp(otlp.traces_of_log(log), destination, otlp.header_of(log))
+back = otlp.read_otlp(destination)
+assert back.case_count == log.case_count and back.event_count == log.event_count
+assert back.tie_broken == log.tie_broken
+assert otlp.verify(destination, log)["ok"]
+
+print("OFFLINE OK", log.case_count, len(graph), report["total_violations"], stats.spans)
 """
 
 

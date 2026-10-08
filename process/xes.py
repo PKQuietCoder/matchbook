@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from xml.etree.ElementTree import iterparse
 
 from process.log import BATCH, DAY, HUMAN, SECOND, UNKNOWN, VENDOR, EventLog, EventLogBuilder
@@ -147,6 +147,57 @@ def classify_resource(name: str) -> str:
     return UNKNOWN
 
 
+def add_trace_events(
+    builder: EventLogBuilder,
+    case_id: str,
+    events: Iterable[Mapping[str, Any]],
+    *,
+    value_attribute: str | None = BPIC19_VALUE_ATTRIBUTE,
+) -> int:
+    """Add one trace's events to a builder. Returns how many were added.
+
+    Extracted from `read_xes` so that a streaming consumer -- `process.otlp`
+    builds one case at a time rather than the whole 1.6M-event log -- parses
+    events through exactly the same code as a whole-log ingest. Two copies of
+    this loop would be free to disagree about precision, value scaling or which
+    attributes are "extra", and the disagreement would show up as an export
+    that does not match the log it claims to be.
+
+    An event with no timestamp is skipped: it cannot be placed in a sequence,
+    and inventing one would be the opposite of an order assumption disclosed.
+    """
+    added = 0
+    for record in events:
+        activity = str(record.get(ACTIVITY_ATTRIBUTE, "")) or "UNKNOWN"
+        raw_timestamp = record.get(TIMESTAMP_ATTRIBUTE)
+        if raw_timestamp is None:
+            continue
+        timestamp, precision = parse_timestamp(str(raw_timestamp))
+        resource = str(record.get(RESOURCE_ATTRIBUTE, "") or "")
+        value_cents = 0
+        if value_attribute is not None:
+            raw_value = record.get(value_attribute)
+            if isinstance(raw_value, (int, float)):
+                value_cents = int(round(float(raw_value) * 100))
+        extra = {
+            key: value
+            for key, value in record.items()
+            if key
+            not in (ACTIVITY_ATTRIBUTE, TIMESTAMP_ATTRIBUTE, RESOURCE_ATTRIBUTE, value_attribute)
+        }
+        builder.add(
+            case_id=case_id,
+            activity=activity,
+            timestamp=timestamp,
+            resource=resource,
+            value_cents=value_cents,
+            precision=precision,
+            attributes=extra or None,
+        )
+        added += 1
+    return added
+
+
 def read_xes(
     path: str | Path,
     *,
@@ -165,7 +216,7 @@ def read_xes(
     `keep_case` and `max_cases` are the sampling hooks: the committed snapshot
     is produced by reading the full file with a deterministic `keep_case`, so
     the sample is reproducible from the manifest rather than being a mystery
-    file (see logs/snapshot/README.md).
+    file (see logs/snapshot/SAMPLE.md).
     """
     builder = EventLogBuilder(
         log_id,
@@ -182,33 +233,7 @@ def read_xes(
             continue
         case_id = str(trace_attributes.get(case_attribute) or f"case-{seen}")
         builder.add_case_attributes(case_id, trace_attributes)
-        for record in events:
-            activity = str(record.get(ACTIVITY_ATTRIBUTE, "")) or "UNKNOWN"
-            raw_timestamp = record.get(TIMESTAMP_ATTRIBUTE)
-            if raw_timestamp is None:
-                continue
-            timestamp, precision = parse_timestamp(str(raw_timestamp))
-            resource = str(record.get(RESOURCE_ATTRIBUTE, "") or "")
-            value_cents = 0
-            if value_attribute is not None:
-                raw_value = record.get(value_attribute)
-                if isinstance(raw_value, (int, float)):
-                    value_cents = int(round(float(raw_value) * 100))
-            extra = {
-                key: value
-                for key, value in record.items()
-                if key
-                not in (ACTIVITY_ATTRIBUTE, TIMESTAMP_ATTRIBUTE, RESOURCE_ATTRIBUTE, value_attribute)
-            }
-            builder.add(
-                case_id=case_id,
-                activity=activity,
-                timestamp=timestamp,
-                resource=resource,
-                value_cents=value_cents,
-                precision=precision,
-                attributes=extra or None,
-            )
+        add_trace_events(builder, case_id, events, value_attribute=value_attribute)
         kept += 1
         if on_progress is not None and seen % 10000 == 0:
             on_progress(seen, kept)

@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import itertools
 import json
 import sys
 from pathlib import Path
 
-from process import config, csvio, dfg, filters, rules, store, variants, viz, xes
+from process import config, csvio, dfg, filters, otlp, rules, store, variants, viz, xes
 from process.log import EventLog
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -211,6 +212,115 @@ def cmd_tie_breaks(args) -> int:
     return 0
 
 
+def cmd_otlp(args) -> int:
+    """Export a log as OTLP/JSON spans: one trace per case, one span per event.
+
+    Two sources, because the full 1.6M-event log is not in the store and does
+    not want to be: `--from-xes` streams the raw file one case at a time, where
+    reading it into an EventLog first costs ~1.4 GB plus a store it only needs
+    once. Measured on the full log: 1,847,657 spans in 59.6s at 81 MB peak
+    resident, from a 728 MB source.
+    """
+    if args.from_xes and (args.flow or args.coverage):
+        raise SystemExit(
+            "--flow and --coverage need a whole log in memory, and --from-xes never holds "
+            "one. Ingest the source first, or drop the filter."
+        )
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    filters_applied = {
+        key: getattr(args, key, None)
+        for key in ("flow", "coverage", "max_cases")
+        if getattr(args, key, None)
+    }
+
+    if args.from_xes:
+        header = otlp.ExportHeader(
+            log_id=args.log_id,
+            source=str(args.from_xes),
+            license=args.license,
+            attribution=args.attribution,
+            doi=args.doi,
+            filters=filters_applied,
+        )
+        traces = otlp.traces_of_xes(
+            args.from_xes,
+            log_id=args.log_id,
+            activity_rank=config.activity_rank(),
+            max_cases=args.max_cases,
+        )
+    else:
+        log = _load(args)
+        row = next(
+            (r for r in store.list_logs(args.store) if r["log_id"] == args.log_id),
+            None,
+        )
+        overrides = {}
+        if args.license:
+            overrides["license"] = args.license
+        if args.attribution:
+            overrides["attribution"] = args.attribution
+        header = otlp.header_of(
+            log,
+            doi=args.doi or (row.get("doi") or "" if row else ""),
+            filters=filters_applied,
+            **overrides,
+        )
+        traces = otlp.traces_of_log(log)
+        if args.max_cases:
+            traces = itertools.islice(traces, args.max_cases)
+
+    # 1.6M events takes minutes, and silence looks like a hang.
+    def progress(stats: otlp.ExportStats) -> None:
+        if stats.cases and stats.cases % 20000 == 0:
+            print(f"  {stats.cases:,} cases / {stats.spans:,} spans", flush=True)
+
+    stats = otlp.write_otlp(
+        traces, out, header, batch_spans=args.batch_spans, on_progress=progress
+    )
+    stem = out.name.split(".")[0]
+    disclosure = otlp.write_disclosure(stats, header, out.with_name(f"{stem}.disclosure.md"))
+    written = otlp.write_manifest(stats, header, out.with_name(f"{stem}.manifest.json"))
+    for path in (out, disclosure, written):
+        print(f"wrote {path}")
+    print(json.dumps(stats.as_record(), indent=1, default=str))
+    print(
+        f"\nThe source records instants, so all {stats.events:,} event spans have zero "
+        f"duration and no span carries a status. Sort by {otlp.ATTR_SEQ}, not by time: "
+        f"{stats.tie_broken_events:,} events share an instant with their predecessor. "
+        f"See {disclosure.name}."
+    )
+    return 0
+
+
+def cmd_otlp_verify(args) -> int:
+    """Re-read an OTLP export and check it conserves the log it came from."""
+    log = store.load(args.store, args.against) if args.against else None
+    report = otlp.verify(args.path, log)
+    print(json.dumps(report, indent=1, default=str))
+    if not report["ok"]:
+        print(f"\n{len(report['problems'])} problem(s) found", file=sys.stderr)
+        return 1
+    compared = report.get("compared", {})
+    if log is None:
+        print(
+            "\nOTLP conformance and self-consistency only. Pass --against <log_id> to "
+            "check that the export conserves the log it claims to represent."
+        )
+    elif not compared.get("evaluated"):
+        # Never report a comparison that did not happen as a comparison that
+        # passed. `problems` being empty means the file is well formed, not that
+        # it matches the log named on the command line.
+        print(
+            f"\nConformance passed, but the export was NOT compared against "
+            f"{log.log_id}: {compared.get('not_applicable_because', 'unknown reason')}"
+        )
+    else:
+        print(f"\nThe export conserves {log.log_id} exactly.")
+    return 0
+
+
 def cmd_compare(args) -> int:
     """Diff two logs' DFGs -- the human process against the agent's."""
     left = store.load(args.store, args.left)
@@ -308,6 +418,33 @@ def build_parser() -> argparse.ArgumentParser:
     ties.add_argument("--out")
 
     ties.set_defaults(func=cmd_tie_breaks)
+
+    export = with_log(sub.add_parser("otlp", help="export a log as OTLP/JSON spans"))
+    export.add_argument("--out", required=True, help=".ndjson or .ndjson.gz")
+    export.add_argument(
+        "--from-xes",
+        metavar="PATH",
+        help="stream straight from a raw XES file instead of the store -- the only "
+        "practical way to export the full 1,595,923-event log",
+    )
+    export.add_argument("--max-cases", type=int)
+    export.add_argument(
+        "--batch-spans",
+        type=int,
+        default=2000,
+        help="spans per NDJSON line; one line is one POST-able ExportTraceServiceRequest",
+    )
+    export.add_argument("--license", default="", help="overrides the log's own license")
+    export.add_argument(
+        "--attribution", default="", help="overrides the log's own attribution"
+    )
+    export.add_argument("--doi", default="", help="overrides the DOI recorded in the store")
+    export.set_defaults(func=cmd_otlp)
+
+    check = sub.add_parser("otlp-verify", help="re-read an OTLP export and check it conserves")
+    check.add_argument("path")
+    check.add_argument("--against", help="log_id in the store to compare the re-read log against")
+    check.set_defaults(func=cmd_otlp_verify)
 
     compare = sub.add_parser("compare", help="diff two logs' process maps")
     compare.add_argument("left")

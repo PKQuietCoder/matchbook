@@ -248,6 +248,24 @@ Acceptance: the mining path runs with **no API key and no Docker**; the agent's 
 
 ---
 
+## Span export, and the one trap waiting in it
+
+`process/otlp.py` exports any `EventLog` as OTLP/JSON spans -- one trace per
+case, one zero-duration span per event -- so the human log and the bridged agent
+log open in the same OTLP tooling. It is hand-written and stdlib-only, and
+`tests/test_offline_mining.py` writes and re-reads spans with the
+`opentelemetry` import blocked, which is the claim worth testing.
+
+Not built, deliberately: a **`spans.db` -> OTLP** exporter that would emit model
+spans as `gen_ai.*` generations carrying token usage and cost. That is the more
+valuable artifact, and it has a trap in it. Matchbook's four token fields are
+**disjoint** (the Anthropic convention: prompt tokens = input + cache_read +
+cache_write, see `agent/agent.py` and `observability/schema.sql`), whereas the
+OTel GenAI semantic convention treats cache counts as **subsets** of the input
+total. An exporter must therefore sum them, not copy them across. Copying would
+under-report input tokens on every cached call and the number would still look
+plausible, which is the worst kind of wrong.
+
 ## Later milestones
 
 | M | Delivers |
