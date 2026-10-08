@@ -43,7 +43,7 @@ from agent.agent import (
     run_session,
 )
 from agent.auth import ROLES, AuthContext
-from agent.model_anthropic import DEFAULT_MODEL
+from agent.model_anthropic import DEFAULT_MODEL, load_env
 from observability import instrument
 from observability.spans import SpanStore
 from server.sessions import SessionStore
@@ -235,6 +235,7 @@ def health() -> dict[str, Any]:
 
 @app.on_event("startup")
 def _start_tracing() -> None:
+    load_env()
     configured = instrument.configure(service_name="matchbook-server")
     print(banner())
     print(

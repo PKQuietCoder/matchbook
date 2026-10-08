@@ -281,9 +281,23 @@ def record_usage(span: Any, model_name: str, usage: Any) -> None:
     """Record token counts, keeping Anthropic's disjoint fields distinguishable.
 
     `gen_ai.usage.input_tokens` carries the uncached input only. The cache
-    counts are real tokens that were really billed, but they are *not* part of
-    that field's definition, so they travel under mb.* instead of being summed
-    into a total no provider reported.
+    counts are real tokens that were really billed, but Anthropic reports the
+    four counts as DISJOINT sets, and they are billed at three different rates
+    (cache write 1.25x, cache read 0.1x), so no single total can be priced
+    correctly by a consumer that sees only one field.
+
+    The consequence is measured, not hypothetical. One live
+    `diagnose_block` run, 2026-10-08: 917 uncached input + 371 output + 1,867
+    cache (written on step 1, read on step 2). Langfuse priced it at $0.005544
+    from the standard fields; `bridge/cost.py`, which knows the three rates,
+    priced it at $0.0106. Langfuse is not wrong -- it is pricing what the
+    standard field means. It is simply missing the cache tokens, which is the
+    unavoidable cost of not inventing a total.
+
+    So: **a third-party cost figure derived from gen_ai.usage alone understates
+    this provider.** `python -m bridge.cost` is authoritative for money, the
+    trace UI is authoritative for shape, and the handout says so rather than
+    letting a student quote the smaller number.
     """
     if usage is None or not span.is_recording():
         return

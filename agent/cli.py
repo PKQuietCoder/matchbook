@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from agent.agent import ScriptedModel, auth_context_for, banner, run_session
+from agent.model_anthropic import load_env
 from agent.scripts import SCRIPTS
 from observability import instrument
 from observability.spans import SpanStore
@@ -65,7 +66,6 @@ def _ad_hoc(args, parser, prompt_template: str | None) -> int:
         generate_world(quiet=True)
         print("world re-seeded")
 
-    instrument.configure()
     print(banner())
     ctx = auth_context_for(args.actor)
     store = SpanStore(args.spans)
@@ -152,6 +152,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Before anything reads an environment variable. The tracer needs the
+    # LANGFUSE_* values and the live adapter needs the API key, and both are in
+    # .env; loading it inside the model adapter meant the tracer had already
+    # given up by the time the file was read.
+    load_env()
+    instrument.configure()
+
     if args.list_scripts:
         for name, script in SCRIPTS.items():
             print(f"{name:24s} {script['actor']:8s} {script['comment']}")
@@ -214,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
     finally:
         store.close()
+        instrument.shutdown()
     print(f"\nspans written to {args.spans}")
     return 0
 

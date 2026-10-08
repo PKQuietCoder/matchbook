@@ -1,49 +1,78 @@
 # Langfuse v3, self-hosted locally, for reading the agent's traces.
 #
-# `observability/spans.py` is still the authoritative record -- the bridge mines
+# `observability/spans.py` remains the authoritative record -- the bridge mines
 # the event log from it and the cost report prices it. This stack exists so a
-# run can also be *read*: span tree, tool order, the authenticated caller, the
-# permission decision, tokens.
+# run can also be *read*: the span tree, tool order, the authenticated caller,
+# the permission decision, tokens.
 #
 #   docker compose -f observability/docker-compose.yml up -d
-#   open http://localhost:3000   ->  student@example.com / matchbook-dev-pass
+#   open http://localhost:3001   ->  student@example.com / matchbook-dev-pass
 #
-# Nothing in Matchbook requires it. With the stack down, or with the
-# LANGFUSE_* variables unset, observability/instrument.py records nothing and
-# every command still works; tests/test_offline_mining.py proves the mining
-# half never touches any of this.
+# Nothing in Matchbook requires it. With the stack down, or with the LANGFUSE_*
+# variables unset, observability/instrument.py records nothing and every command
+# still works; tests/test_offline_mining.py proves the mining half never touches
+# any of it.
 #
-# LICENSING, because this repo polices its dataset licences and must police its
-# own dependencies the same way. These are development-time containers: nothing
-# here is redistributed by Matchbook and nothing is linked into it. Langfuse is
-# MIT (its `ee/` directory is commercially licensed and unused here),
-# ClickHouse Apache-2.0, PostgreSQL the PostgreSQL licence, and MinIO AGPL-3.0.
+# WHY v3 AND NOT v4. Upstream is on v4, and v4 ingests OTLP spans here
+# correctly -- that was measured, not assumed. But v4 defaults to "events_only
+# mode": the /api/public/traces read API returns a refusal, and the ClickHouse
+# `traces` and `observations` tables stay empty while data lands in
+# `events_full` instead. Homework 3 needs to read traces back out (its export
+# fails when a scenario produced no trace) and its smoke report is SQL over
+# those tables. So v3, which serves both. It is also what the sibling Oakline
+# course runs, and infrastructure parity between the two repos is the
+# comparison this project exists to make.
+#
+# PORTS ARE SHIFTED BY ONE from Oakline's stack (3001 not 3000, ClickHouse
+# 8124 not 8123, native 9003 not 9002, MinIO 9092/9093 not 9090/9091) so the two
+# courses' stacks cannot collide. Two Langfuse instances on one laptop is a lot
+# of ClickHouse, so stopping the other course's stack while working here is the
+# cheaper habit -- shifted ports mean forgetting costs a port error rather than
+# a confused project.
+#
+# LICENSING, because this repo holds its datasets to a stated licence and owes
+# its own dependencies the same scrutiny. These are development-time containers:
+# nothing here is redistributed by Matchbook and nothing is linked into it.
+# Langfuse is MIT (its ee/ directory is commercially licensed and unused),
+# ClickHouse Apache-2.0, PostgreSQL the PostgreSQL licence, MinIO AGPL-3.0.
 #
 # Redis is pinned to 7.2 for a licensing reason, not a technical one: 7.4
-# onwards is RSALv2/SSPL, which is not OSI-approved. 7.2 is the last BSD-3
-# release. A repo that excludes CC BY-NC datasets by written policy should not
-# acquire an SSPL service by taking an upstream compose file unread.
+# onwards is RSALv2/SSPL, which is not OSI-approved, and the upstream `redis:7`
+# tag floats onto it. 7.2 is the last BSD-3 release and is well past BullMQ's
+# floor. (valkey/valkey, the BSD-3 fork, is the other clean option.) A repo that
+# excludes CC BY-NC datasets by written policy should not acquire an SSPL
+# service by copying a compose file unread.
 #
-# See NOTICE. Every tag is pinned so an upgrade is a decision, not an accident.
+# One image cannot be pinned: cgr.dev/chainguard/minio publishes only a rolling
+# tag on the free tier, so `up -d` may fetch a different build than it did last
+# week. A real weakness, stated rather than hidden. It holds local event blobs
+# only, so the blast radius is this stack's own storage.
+#
+# Dev credentials throughout. Do not reuse any of these values off localhost.
 
 name: matchbook-observability
 
 services:
-  langfuse-web:
-    image: langfuse/langfuse:3.144.0
-    depends_on:
-      postgres: { condition: service_healthy }
-      clickhouse: { condition: service_healthy }
-      minio: { condition: service_healthy }
-      redis: { condition: service_healthy }
-    ports:
-      - "3000:3000"
-    environment:
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    restart: always
+    depends_on: &langfuse-depends-on
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment: &langfuse-shared-env
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
-      NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: matchbook-dev-nextauth-secret
       SALT: matchbook-dev-salt
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      # Quoted deliberately: unquoted, YAML reads a 64-digit literal as a
+      # number and Langfuse then rejects it as "too small". Dev-only; generate
+      # your own for anything shared, with `openssl rand -hex 32`.
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      TELEMETRY_ENABLED: "false"
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: clickhouse
@@ -55,84 +84,95 @@ services:
       LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
-      REDIS_CONNECTION_STRING: redis://redis:6379
-      TELEMETRY_ENABLED: "false"
-      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
-      # Seeded at first boot, so .env.example can ship working local keys and
-      # the handout does not have to walk you through a signup form. These are
-      # development credentials for a local container; they are not secrets.
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: "events/"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: "media/"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: matchbook-dev-redis
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    restart: always
+    depends_on: *langfuse-depends-on
+    ports:
+      - "3001:3000"
+    environment:
+      <<: *langfuse-shared-env
+      # Must match the URL you open in the browser.
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: matchbook-dev-nextauth-secret
+      # Pre-provisions the org, project, API keys and login on first boot, and
+      # these keys are the ones in .env.example -- so tracing works without
+      # clicking through a signup form.
       LANGFUSE_INIT_ORG_ID: matchbook
-      LANGFUSE_INIT_ORG_NAME: Matchbook
+      LANGFUSE_INIT_ORG_NAME: Matchbook Course
       LANGFUSE_INIT_PROJECT_ID: matchbook-dev
-      LANGFUSE_INIT_PROJECT_NAME: matchbook-dev
+      LANGFUSE_INIT_PROJECT_NAME: Matchbook Dev
       LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-matchbook-dev
       LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-matchbook-dev
       LANGFUSE_INIT_USER_EMAIL: student@example.com
       LANGFUSE_INIT_USER_NAME: Matchbook Student
       LANGFUSE_INIT_USER_PASSWORD: matchbook-dev-pass
 
-  langfuse-worker:
-    image: langfuse/langfuse-worker:3.144.0
-    depends_on:
-      postgres: { condition: service_healthy }
-      clickhouse: { condition: service_healthy }
-      minio: { condition: service_healthy }
-      redis: { condition: service_healthy }
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
-      SALT: matchbook-dev-salt
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
-      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
-      CLICKHOUSE_URL: http://clickhouse:8123
-      CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
-      CLICKHOUSE_CLUSTER_ENABLED: "false"
-      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
-      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
-      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
-      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
-      REDIS_CONNECTION_STRING: redis://redis:6379
-      TELEMETRY_ENABLED: "false"
-
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16
+    restart: always
     environment:
-      POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
+      interval: 3s
+      timeout: 3s
+      retries: 10
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - langfuse_postgres_data:/var/lib/postgresql/data
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
+    restart: always
+    user: "101:101"
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
-    user: "101:101"
     ports:
-      # Exposed so the Homework 3 smoke report can query it directly.
-      - "8123:8123"
+      # Exposed so Homework 3's smoke report can query the trace store directly.
+      - "127.0.0.1:8124:8123"
+      - "127.0.0.1:9003:9000"
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 10
+      start_period: 5s
     volumes:
-      - clickhouse-data:/var/lib/clickhouse
-      - clickhouse-logs:/var/log/clickhouse-server
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+
+  redis:
+    image: redis:7.2-alpine
+    restart: always
+    command: >
+      --requirepass matchbook-dev-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "matchbook-dev-redis", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: cgr.dev/chainguard/minio:latest
+    restart: always
     entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server /data --address ":9000" --console-address ":9001"'
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
@@ -140,21 +180,17 @@ services:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 10
+      start_period: 5s
     volumes:
-      - minio-data:/data
-
-  redis:
-    image: redis:7.2-alpine
-    command: --requirepass ""
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
+      - langfuse_minio_data:/data
 
 volumes:
-  postgres-data:
-  clickhouse-data:
-  clickhouse-logs:
-  minio-data:
+  langfuse_postgres_data:
+    driver: local
+  langfuse_clickhouse_data:
+    driver: local
+  langfuse_clickhouse_logs:
+    driver: local
+  langfuse_minio_data:
+    driver: local
