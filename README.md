@@ -4,10 +4,6 @@ A purchase-to-pay agent, a hand-written process-mining library, and a real
 human event log of the same process — so an agent's behaviour can be measured
 against how people actually ran the work.
 
-Matchbook is a sibling of the Oakline course repository. Oakline teaches how
-to evaluate an agent's *answers*. Matchbook teaches how to see, measure and
-govern the *process* an agent executes.
-
 ## The idea
 
 A public event log and an agent's traces are two recordings of the same business
@@ -29,12 +25,13 @@ and becomes a measured deviation.
 
 ## Why the algorithms are hand-written
 
-No a third-party mining framework, no commercial mining tool. XES parsing, the log representation,
-discovery, conformance and rendering are all original code here. That costs
-effort and buys three things: the IP is ours; the live process-map app can be
-hosted publicly (a third-party mining framework is AGPL-3.0-or-later, whose §13 network clause would
-otherwise oblige offering the whole application's source to every visitor); and
-the algorithms become the teaching content rather than a library call.
+No third-party mining framework, no commercial mining tool. XES parsing, the log
+representation, discovery, conformance and rendering are all original code here.
+That costs effort and buys three things: the IP is ours; the live process-map app
+can be hosted publicly (the dominant open-source mining library is
+AGPL-3.0-or-later, whose §13 network clause would otherwise oblige offering the
+whole application's source to every visitor); and the algorithms become the
+teaching content rather than a library call.
 
 ## Setup
 
@@ -367,8 +364,8 @@ docker compose -f observability/docker-compose.yml up -d
 uv run uvicorn server.app:app --port 8010
 ```
 
-Ports are shifted by one from upstream so this stack can coexist with the
-sibling Oakline course's. With the stack down, or the `LANGFUSE_*` variables
+Ports are shifted by one from upstream so this stack can coexist with another
+Langfuse instance on the same machine. With the stack down, or the `LANGFUSE_*` variables
 unset, `instrument.py` records nothing and every command above still works --
 `tests/test_offline_mining.py` blocks `opentelemetry` and `fastapi` by name and
 mines a real log anyway.

@@ -72,7 +72,7 @@ REQUIRED_TUPLE = ("role", "actor_id", "intent", "item_key", "item_state", "flow"
 REQUIRED_EXPECTED = ("evaluation", "outcome", "reason", "requirement", "source",
                      "activities_expected")
 
-# The final dataset's shape. Three data-quality cases rather than Oakline's
+# The final dataset's shape. Three data-quality cases rather than six,
 # six, so the per-record quota is 15 instead of 5 and the remainder of the
 # challenge set comes from the other challenge shapes.
 FINAL_TOTAL = 250

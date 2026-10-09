@@ -43,7 +43,7 @@ Development-time containers (observability/docker-compose.yml)
   MinIO               AGPL-3.0. Run locally as a separate, unmodified
                       upstream image, which §13 does not reach. Matchbook
                       links no AGPL code -- the reason this repo hand-writes
-                      its mining library instead of using a third-party mining framework.
+                      its mining library rather than taking an AGPL one.
   Redis               BSD-3-Clause, pinned at 7.2. Deliberate: Redis 7.4 and
                       later are RSALv2/SSPL, which is not OSI-approved, and
                       taking an upstream compose file unread would have

@@ -1,7 +1,7 @@
 """Prompt, model wiring, the tool dispatch seam, and the session loop.
 
-One design decision is worth stating because it differs from Oakline. The
-loop here is a small, provider-agnostic one behind a `Model` protocol, rather
+One design decision is worth stating. The loop here is a small,
+provider-agnostic one behind a `Model` protocol, rather
 than an SDK runner, and a `ScriptedModel` is a first-class citizen rather than
 a test double. The reason is the repo's central guarantee: the whole
 pipeline -- world, tools, spans, the bridge, mined log, conformance -- has to be

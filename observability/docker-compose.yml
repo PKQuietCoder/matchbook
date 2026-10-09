@@ -19,11 +19,9 @@
 # `traces` and `observations` tables stay empty while data lands in
 # `events_full` instead. Homework 3 needs to read traces back out (its export
 # fails when a scenario produced no trace) and its smoke report is SQL over
-# those tables. So v3, which serves both. It is also what the sibling Oakline
-# course runs, and infrastructure parity between the two repos is the
-# comparison this project exists to make.
+# those tables. So v3, which serves both.
 #
-# PORTS ARE SHIFTED BY ONE from Oakline's stack (3001 not 3000, ClickHouse
+# PORTS ARE SHIFTED BY ONE from the upstream defaults (3001 not 3000, ClickHouse
 # 8124 not 8123, native 9003 not 9002, MinIO 9092/9093 not 9090/9091) so the two
 # courses' stacks cannot collide. Two Langfuse instances on one laptop is a lot
 # of ClickHouse, so stopping the other course's stack while working here is the

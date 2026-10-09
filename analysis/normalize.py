@@ -1,7 +1,7 @@
 """One normalized trace record, consumed by review, judges and monitoring.
 
-Oakline's Module 2 works off a single normalized shape, and every component
-downstream depends on it, so Matchbook keeps the same contract and adds the
+Review, judges and monitoring all work off a single normalized shape, and every
+component downstream depends on it, so the contract is fixed and carries the
 fields this domain makes available:
 
   - `features.process` -- what the run did to the *process*, not just what it

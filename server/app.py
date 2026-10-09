@@ -92,7 +92,7 @@ async def lifespan(_: FastAPI):
 # populated. The lost HTTP spans cost little -- the status code is in uvicorn's
 # log and the route is one endpoint -- and turning it off also gives this
 # repo's traces the same shape as the sibling course's, which are rooted at
-# `oakline.session_message`.
+# `mb.session_message`.
 app = FastAPI(
     title="Matchbook agent",
     version="0.1.0",

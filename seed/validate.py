@@ -1,6 +1,6 @@
 """Fail the seed if a policy document disagrees with facts.yaml.
 
-Two checks, both of which have caught real drift in the Oakline original:
+Two checks, both of which have caught real drift:
 
   1. every value a document declares in `facts_used` equals the value in
      `facts.yaml`; and

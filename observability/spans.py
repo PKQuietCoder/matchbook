@@ -1,8 +1,8 @@
 """Span capture into local SQLite.
 
-Oakline exports OTel spans to a self-hosted Langfuse via Docker. Matchbook's
-mining half has to run on a laptop with no account, no collector and no key, so
-spans land in a local SQLite file instead. The attribute namespace is `mb.*`
+The mining half has to run on a laptop with no account, no collector and no key,
+so spans land in a local SQLite file by default; the OTel exporter in
+`observability/instrument.py` is opt-in and additive. The attribute namespace is `mb.*`
 and the shape is OTel-compatible on purpose -- an OTel exporter can be added
 later without changing the bridge.
 

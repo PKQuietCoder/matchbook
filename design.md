@@ -4,23 +4,21 @@
 
 ## Context
 
-You need a second repo that does for a **purchase-to-pay process** what `matchbook` does for customer support — same conventions, same homework mechanics, same tracing and failure-analysis workflow — but built on **openly licensed real data** so it can serve three audiences at once: a business demo you show prospects, teaching material for students, and the substrate for your own failure/error-analysis work.
+A course repository for a **purchase-to-pay process**: consistent conventions, homework mechanics, tracing and a failure-analysis workflow, built on **openly licensed real data** so it can serve three audiences at once: a business demo you show prospects, teaching material for students, and the substrate for your own failure/error-analysis work.
 
-Two things make this more than a Oakline clone:
+Two things make this repo unusual:
 
 1. **A real human event log as a normative model.** A public log and an agent's traces are two recordings of the *same* business process — one executed by people in a real company, one by an LLM agent. That gives conformance checking a reference model you did not invent, so "the agent released a payment before the goods receipt" becomes a measured deviation instead of an opinion.
-2. **Every algorithm is yours.** No a third-party mining framework, no commercial mining tool. The repo hand-writes XES parsing, discovery, conformance and visualization. That costs more effort and buys three things: you own the IP outright; you can host the live chat + process-map app publicly (a third-party mining framework is AGPL-3.0-or-later, whose §13 network clause would otherwise oblige you to offer the whole application's source to every visitor); and the algorithms become the teaching content rather than a library call.
-
-The Oakline repo already contains **`design.md`**, an earlier design for a sibling repo ("Switchboard": IT-helpdesk flagship, a third-party mining framework-based, data download-only). This plan supersedes it on three points — the domain, the mining library, and the data posture — and keeps the rest, which is still right: the central idea, the Oakline pattern-reuse table, the four variability sources, local SQLite span capture with no Docker, and the dataset exclusion list. **Fold `design.md` into the new repo's `design.md` rather than leaving two documents to drift.**
+2. **Every algorithm is yours.** No third-party mining framework, no commercial mining tool. The repo hand-writes XES parsing, discovery, conformance and visualization. That costs more effort and buys three things: you own the IP outright; you can host the live chat + process-map app publicly (the dominant open-source mining library is AGPL-3.0-or-later, whose §13 network clause would otherwise oblige you to offer the whole application's source to every visitor); and the algorithms become the teaching content rather than a library call.
 
 ### Decisions already settled
 
 | Decision | Choice |
 | --- | --- |
 | Process + dataset | **BPI Challenge 2019** purchase-to-pay (SAP procurement), CC BY 4.0 |
-| Mining library | **Hand-written**; no a third-party mining framework or other process-mining framework |
+| Mining library | **Hand-written**; no third-party process-mining framework |
 | Data posture | Pinned sampled snapshot committed + full-log downloader with hash manifest + fitted synthetic twin |
-| Repo relationship | **New standalone repo**, mirroring Oakline's structure and conventions |
+| Repo relationship | **Standalone repo** with its own structure and conventions |
 | First milestone | **Thin end-to-end vertical slice** through every layer |
 
 ---
@@ -47,7 +45,7 @@ Scale and shape:
   4. Consignment — no invoices at PO level; handled in a separate process
 - Frequent activities include `Create Purchase Order Item`, `Record Goods Receipt` (~19.7% of events), `Record Invoice Receipt`, `Clear Invoice`, `Remove Payment Block`, `Create Purchase Requisition Item`, `Receive Order Confirmation`, `Change Quantity`, `Change Price`, `Vendor creates invoice`, `Delete Purchase Order Item`, `Cancel Goods Receipt`
 
-**Known data-quality traits — curriculum, not defects to hide.** Day-granularity timestamps on several activities, so intra-day order is ambiguous; events recorded by vendors rather than employees; monetary values anonymized by a linear translation (internally consistent, not real currency); cancelled and deleted items; duplicate invoice events; items whose flow type contradicts their event sequence. Oakline's `data_quality_cases` table is the precedent — document each defect as intentional data with an `expected_handling` so nobody mistakes corruption for ground truth.
+**Known data-quality traits — curriculum, not defects to hide.** Day-granularity timestamps on several activities, so intra-day order is ambiguous; events recorded by vendors rather than employees; monetary values anonymized by a linear translation (internally consistent, not real currency); cancelled and deleted items; duplicate invoice events; items whose flow type contradicts their event sequence. A `data_quality_cases` table records them — document each defect as intentional data with an `expected_handling` so nobody mistakes corruption for ground truth.
 
 **Also screened. Keep the exclusion list in `logs/README.md` so nobody re-adds them.**
 
@@ -106,7 +104,7 @@ seed/
 scenarios/ replay/ analysis/ explore/ eval_cases/ tests/ homework/module-1..N/
 ```
 
-Keep every Oakline idiom the subagent catalogued: `facts.yaml` → rendered policy docs → `seed/validate.py` fails the seed on mismatch; `SPEC.md` requirement IDs plus a spec→implementation table and the statement that the app never reads it at runtime; the logic/wrapper tool split with one `_call()` dispatch seam that converts `NotImplementedError` into a structured result and records span attributes; `{"ok", "error", "reason"}` results; `AuthContext` injected by the server and never from chat; env-var path indirection (`$MB_DB`, `$MB_POLICIES_DIR`, `$MB_ANALYSIS_STATE`) so a deterministic reseed *is* the sandbox reset; a fixed `WORLD_ASOF` and never `now()`; a short hashed `prompt_version` stamped on traces; append-only file-backed state; three test tiers with `xfail` homework holes and the `world` / `world_copy` / `analysis_state` fixture trio.
+The conventions this repo keeps: `facts.yaml` → rendered policy docs → `seed/validate.py` fails the seed on mismatch; `SPEC.md` requirement IDs plus a spec→implementation table and the statement that the app never reads it at runtime; the logic/wrapper tool split with one `_call()` dispatch seam that converts `NotImplementedError` into a structured result and records span attributes; `{"ok", "error", "reason"}` results; `AuthContext` injected by the server and never from chat; env-var path indirection (`$MB_DB`, `$MB_POLICIES_DIR`, `$MB_ANALYSIS_STATE`) so a deterministic reseed *is* the sandbox reset; a fixed `WORLD_ASOF` and never `now()`; a short hashed `prompt_version` stamped on traces; append-only file-backed state; three test tiers with `xfail` homework holes and the `world` / `world_copy` / `analysis_state` fixture trio.
 
 ---
 
@@ -154,7 +152,7 @@ BPI19 mapping: `case_id = f"{Purchasing Document}-{Item}"`, with `Purchasing Doc
 
 *Layer B — model-based conformance.* `replay_token.py` for token-based replay fitness (cheap, runs at full scale), `align.py` for alignments, `precision.py` for escaping-edges precision. Alignments are the expensive part, so scope them honestly: A* over the synchronous product with unit costs for log and model moves and zero for synchronous moves, an admissible remaining-work heuristic, **per-variant alignment with a cache** (variants, not cases, are the unit of work), a state-exploration cap that degrades to token replay with the degradation recorded, and a documented workflow of aligning a filtered sublog or the variants covering the top *n*% of cases. Do not promise exact alignments over all 251,734 cases.
 
-**Visualization** — `viz.py` emits **DOT** as the primary artifact (graphviz optional, never imported by the mining core) and hand-rolled **SVG** for the DFG and the Petri net so the hosted explorer has zero system dependencies. Oakline's `monitoring/chart.py` is the precedent for hand-written SVG.
+**Visualization** — `viz.py` emits **DOT** as the primary artifact (graphviz optional, never imported by the mining core) and hand-rolled **SVG** for the DFG and the Petri net so the hosted explorer has zero system dependencies.
 
 **Object-centric** — `ocel.py` derives objects (purchase document, item, goods receipt, invoice, vendor) and event-to-object relations from the same store, and computes an object-centric DFG. This is the lens that actually fits agent traces, where one conversation touches several business objects.
 
@@ -176,7 +174,7 @@ Two decisions the handouts must make the reader confront rather than hand them: 
 
 **Matchbook AP exception desk.** Roles: `buyer`, `ap_clerk`, `controller`, `vendor` (narrow read-only scope). The work is genuine exception handling: an invoice is blocked, and someone must find out why and resolve it within policy.
 
-Tools (five are homework holes; the shape mirrors Oakline's logic/wrapper split):
+Tools (five are homework holes; the shape is a logic/wrapper split):
 
 | Tool | Risk | Notes |
 | --- | --- | --- |
@@ -193,12 +191,12 @@ Tools (five are homework holes; the shape mirrors Oakline's logic/wrapper split)
 | `escalate_to_controller(summary)` | write | |
 | `mine_process(question)` | read | the differentiator: the agent queries your own mining library about its own process |
 
-`facts.yaml` holds every number: `match_tolerance_percent`, `match_tolerance_abs_usd`, `payment_release_auto_approve_usd`, `payment_terms_days`, `early_payment_discount_percent` / `_days`, `gr_required_item_categories`, `duplicate_invoice_lookback_days`, `segregation_of_duties` rules, `activity_rank` for tie-breaking. `seed/controls.py` is the pure oracle with no framework imports — the seeder's stamp source, the tool's rule, and the test oracle, exactly as `seed/eligibility.py` is in Oakline. Authorization lives in `agent/auth.py` and each tool, never in the prompt. The human-approval gate covers payment release above the threshold and price changes beyond tolerance, two-stage as in Oakline (a pre-execution `needs_approval` pause, then an `approvals` audit table whose row plus the item's state *is* the record). The kill switch is a three-rung ladder on one env var: `off` / `writes` / `readonly`.
+`facts.yaml` holds every number: `match_tolerance_percent`, `match_tolerance_abs_usd`, `payment_release_auto_approve_usd`, `payment_terms_days`, `early_payment_discount_percent` / `_days`, `gr_required_item_categories`, `duplicate_invoice_lookback_days`, `segregation_of_duties` rules, `activity_rank` for tie-breaking. `seed/controls.py` is the pure oracle with no framework imports — the seeder's stamp source, the tool's rule, and the test oracle. Authorization lives in `agent/auth.py` and each tool, never in the prompt. The human-approval gate covers payment release above the threshold and price changes beyond tolerance, two-stage (a pre-execution `needs_approval` pause, then an `approvals` audit table whose row plus the item's state *is* the record). The kill switch is a three-rung ladder on one env var: `off` / `writes` / `readonly`.
 
 **The failure modes this design makes reachable** — the reason the repo exists: releasing payment without a goods receipt; a miscomputed tolerance; the agent performing both sides of a segregated duty; accepting a duplicate invoice; trusting the vendor-supplied value over the PO; claiming an action succeeded before the tool confirmed it; a policy claim with no citation; assuming the wrong flow type (consignment handled as three-way); resolving an exception that required controller approval.
 
 **Generating more synthetic data, two distinct ways.**
-*Agent traces:* dimension-driven scenarios (flow type × exception type × value band × vendor behaviour × requester role × injected data defect), where the dimension *values and their frequencies come from the real log*, executed through the HTTP endpoint, captured as spans, normalized into Oakline's trace record shape so the Module 2 review-and-judge workflow applies unchanged.
+*Agent traces:* dimension-driven scenarios (flow type × exception type × value band × vendor behaviour × requester role × injected data defect), where the dimension *values and their frequencies come from the real log*, executed through the HTTP endpoint, captured as spans, normalized into the shared trace record shape so the Module 2 review-and-judge workflow applies unchanged.
 *Synthetic event logs:* `seed/fit.py` measures the real log — activity alphabet, per-flow-type variant distribution, DFG transition probabilities, inter-event duration distributions per edge, resource assignment including the batch-user share, value distribution per spend area — and `seed/simulate.py` samples new cases from it. **Fidelity is reported, not asserted**: `build/fidelity.md` compares synthetic against real on variant-distribution distance, DFG edge-weight correlation and cycle-time quantiles. That is what makes "I can generate more data" defensible.
 
 ---
@@ -280,11 +278,11 @@ plausible, which is the worst kind of wrong.
 
 ## Risks
 
-- **Correctness without a reference implementation.** Hand-written discovery and conformance can be subtly wrong with no a third-party mining framework to check against. This is the single biggest risk, and it has a real mitigation: build the **CC0 Process Discovery Contest** corpus into the test suite from the start. Discover a model from each training log, classify its test log, and score against the ground-truth log — PDC 2020/2021 give 96 original PNML nets per year, so you can also compare your discovered structure against the generating model directly. Cross-check variant and DFG counts against the published BPI 2019 challenge submissions, and the object-centric derivation against the CC BY 4.0 Event Graph of BPI 2019. Do this before the mining library grows, not after.
+- **Correctness without a reference implementation.** Hand-written discovery and conformance can be subtly wrong with no reference implementation to check against. This is the single biggest risk, and it has a real mitigation: build the **CC0 Process Discovery Contest** corpus into the test suite from the start. Discover a model from each training log, classify its test log, and score against the ground-truth log — PDC 2020/2021 give 96 original PNML nets per year, so you can also compare your discovered structure against the generating model directly. Cross-check variant and DFG counts against the published BPI 2019 challenge submissions, and the object-centric derivation against the CC BY 4.0 Event Graph of BPI 2019. Do this before the mining library grows, not after.
 - **Alignment tractability.** A*-based alignments at this scale are a research workload. The per-variant cache, the exploration cap, and the token-replay fallback are not optional extras; they are the design. Promise filtered-sublog alignments only.
 - **Pure-Python performance.** The columnar representation is the mitigation; if ingest or DFG construction misses target, add numpy (BSD) before considering anything heavier, and keep `process/` importable without it.
 - **Upstream availability.** 4TU is mid-maintenance and returning 503. The committed snapshot is the insurance; take it as soon as a download succeeds and pin its hash.
-- **Scope.** This repo's surface is several times Oakline's — a mining library, an agent, a bridge, and a course. The thin slice exists precisely to stop the mining library from absorbing all the effort before anything is demoable.
+- **Scope.** This repo's surface is large — a mining library, an agent, a bridge, and a course. The thin slice exists precisely to stop the mining library from absorbing all the effort before anything is demoable.
 - **Synthetic-fidelity overclaiming.** Never present synthetic traces as real. `build/fidelity.md` with measured distances is the honest version, and it is a better demo artifact than a silent claim.
 - **The authored language layer.** Repeated here because it will be the first question a sharp prospect or student asks: the process, timings and exception mix are real; the conversations and the policy manual are yours. Lead with that rather than being caught by it.
 
@@ -314,27 +312,6 @@ From the detailed core-design pass. These change the plan; they are not restatem
 - **The Helpdesk log's MIT license is verified programmatically**, not inherited from a claim: the Mendeley API's `data_licence.description` is the verbatim MIT grant. Note the committed file is the *anonymized* three-column variant (activity names replaced by numeric ids, no resource attribute); the attribute-rich version is 4TU-GTU and not committable.
 - **The real schema is read off the file, not from papers.** Trace: `concept:name` (already `<document>_<item>`), `Purchasing Document`, `Item`, `Item Type`, `Item Category`, `GR-Based Inv. Verif.`, `Goods Receipt`, `Source`, `Purch. Doc. Category name`, `Company`, `Spend classification text`, `Spend area text`, `Sub spend area text`, `Vendor`, `Name`, `Document Type`. Event: `concept:name`, `time:timestamp`, `org:resource`, `User`, `Cumulative net worth (EUR)`. Resources are named by convention (`batch_NN`, `user_NNN`), which is where the human/automation split comes from — no committed batch-user list needed.
 - **Timestamps are minute-precision and ties are common** — the file's very first case has three events at `13:53:00`. The declared tie-break is load-bearing, and `EventLog.tie_broken` plus `tie_broken_cases()` make it auditable.
-
----
-
-## Appendix: the superseded "Switchboard" design
-
-An earlier design for this repo lives at
-`matchbook/design.md` (working title *Switchboard*): an IT-helpdesk
-flagship built on a third-party mining framework, with the data download-only. It is superseded on three
-points — the domain (purchase-to-pay, not helpdesk), the mining library
-(hand-written, not a third-party mining framework) and the data posture (a committed snapshot plus a
-fitted synthetic twin, not download-only).
-
-What it got right and this design keeps: the central idea that a public log and
-an agent's traces are two recordings of one process; the table of patterns
-reused from Oakline; the four sources of run-to-run variability (k repeats,
-latitude designed into the policy, dimension-driven scenarios, free-form chat);
-local SQLite span capture with no Docker; and the dataset exclusion list, which
-this design extends with verified license findings.
-
----
-
 ## Corrections after milestone 1
 
 A review of the milestone-1 code against the data and the specification found
@@ -429,7 +406,7 @@ now states the position and flags the choice as pending and reversible.
 
 ## Milestone 8, part one: Module 1 of the course layer
 
-Delivered: the three Module 1 handouts adapted from the sibling Oakline course,
+Delivered: the three Module 1 handouts,
 generated `xfail` hole patches for both assignments that have them, the tracing
 and HTTP layers the handouts assume, and the `scenarios/` package.
 
@@ -439,7 +416,7 @@ Most of it is substitution — five support tools become five purchase-to-pay
 tools, three retail roles become buyer/ap_clerk/controller, three orders become
 the five pinned items. Four things needed more than that:
 
-1. **Oakline's fuzzy-search exercise has no analogue**, so HW1's centrepiece is
+1. **The fuzzy-search exercise has no analogue here**, so HW1's centrepiece is
    `clear_invoice`'s nine ordered checks (SPEC TOOL-6) instead.
 2. **`seed.validate` has no analogue** and now appears in Preparation, because a
    student should know before writing a tolerance check that they are
@@ -455,7 +432,7 @@ the five pinned items. Four things needed more than that:
 
 ### Holes are not committed
 
-Oakline ships its holes in the starter, which is why its suite is red on a
+A course repo could ship its holes in the starter, leaving the suite red on a
 fresh clone. This repo cannot: `main` publishes a green suite and a README of
 measured claims that depend on the code working. So each assignment ships a
 generated patch pair, produced by an AST pass that empties a function body and

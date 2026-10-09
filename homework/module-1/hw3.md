@@ -135,7 +135,7 @@ The plan must include:
 - Request difficulty.
 - **Matching flow.**
 
-That last one has no Oakline equivalent and it is the one most often forgotten.
+That last one is unique to this domain and it is the one most often forgotten.
 Every control rule is flow-scoped: a missing goods receipt is a breach on a 3-way
 flow and correct on a 2-way one, and `Consignment` is outside invoice matching
 altogether. A dataset that is all 3-way exercises a quarter of the control logic
@@ -173,7 +173,7 @@ sqlite3 -header -column data/matchbook.db \
      FROM data_quality_cases ORDER BY case_id;'
 ```
 
-Three rather than Oakline's six, so the quota per record is higher: the final
+Three challenge shapes rather than six, so the quota per record is higher: the final
 challenge set needs **at least 15 scenarios for each**, with the rest drawn from
 the other challenge shapes. A scenario about a damaged record must use an actor
 who may access it and must record the matching `case_id` in
@@ -395,9 +395,9 @@ Open three exported traces and confirm each contains the conversation, the model
 name, the tool activity and its scenario identifier in `mb_scenario_id`. Include
 one challenge scenario and one with more than one turn.
 
-**Then mine the run, which is the step Oakline has no equivalent for.** A
-scenario dataset whose traces never reach an event log would be a Oakline
-dataset that happens to live in this repository:
+**Then mine the run, which is the step that makes this repository different.** A
+scenario dataset whose traces never reach an event log would be an ordinary
+trace dataset that happens to live here:
 
 ```bash
 uv run python -m bridge.spans_to_log build/spans.db --log-id hw3-business --layer business

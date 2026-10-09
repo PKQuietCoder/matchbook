@@ -119,9 +119,9 @@ pre-created on first boot and the keys match `.env.example`, so there is nothing
 to click through.
 
 Port 3001, not 3000: every port in this stack is shifted by one so it cannot
-collide with the sibling Oakline course's Langfuse. Two Langfuse instances is a
-lot of ClickHouse for one laptop, so stop the other course's stack while you work
-here.
+collide with another Langfuse instance on the same machine. Two Langfuse
+instances is a lot of ClickHouse for one laptop, so stop the other one while you
+work here.
 
 Copy the `LANGFUSE_*` values from `.env.example` into `.env` if they are not
 already there, and set `MB_TRACE_CONTENT=true`. Without content capture the span
@@ -156,7 +156,7 @@ only when it is true has no denominator. The Homework 3 smoke report counts
 denials from this attribute and Module 3 asserts on it.
 
 `record_activity` is the one with teeth, and it is where this assignment stops
-resembling Oakline's. Only a successful write **that actually changed the
+resembling ordinary transcript review. Only a successful write **that actually changed the
 world** contributes a business activity. A refused or paused attempt is a span —
 visible, countable, minable in the `attempts` layer — but it is not a step that
 happened. The sharp case is a clearing queued for a controller: the tool returns

@@ -1,10 +1,9 @@
 # Matchbook
 
 Matchbook is a purchase-to-pay agent and a hand-written process-mining library,
-built on an openly licensed real event log. It is a sibling of the Oakline
-course repository: same conventions, different subject. Oakline teaches how to
-evaluate an agent's *answers*; Matchbook teaches how to see, measure and govern
-the *process* an agent actually executes.
+built on an openly licensed real event log. It teaches how to see, measure and
+govern the *process* an agent actually executes, rather than only judging the
+answers it gives.
 
 ## Find the relevant instructions
 
@@ -17,7 +16,7 @@ the *process* an agent actually executes.
   reasons. **Never add a dataset whose license forbids commercial use or redistribution**,
   and never commit a log that is fetched by DOI.
 - For process-mining work, the library is `process/`. It is hand-written on purpose: no
-  a third-party mining framework, no other mining framework.
+  third-party mining framework.
 
 ## Shared rules
 

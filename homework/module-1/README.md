@@ -4,7 +4,7 @@ Matchbook's `main` branch is finished code: `uv run pytest` is green and the
 README's measured numbers depend on the tools actually working. So the homework
 holes are **not** committed into the source. You opt into them.
 
-Oakline ships its holes in the starter, which is why its suite is red on a
+A course repo could ship its holes in the starter, leaving the suite red on a
 fresh clone. This repo cannot do that without making its own claims unverifiable,
 so each assignment comes as a pair of generated patches instead.
 

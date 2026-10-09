@@ -5,8 +5,7 @@ This implements SPEC.md section 3. The slogan the course repeats:
 actors table, the tools call these checks before touching data, and the model
 cannot reach outside the caller's row of the matrix however it is asked.
 
-What is different here from Oakline, and the reason this domain is worth
-teaching: `sod_conflict` is **stateful**. Whether a caller may act depends on
+What makes this domain worth teaching: `sod_conflict` is **stateful**. Whether a caller may act depends on
 what that caller already did on the same purchase-order item, so the same
 actor, the same action and the same item can be permitted or denied depending
 on history. That is an authorization rule which is a *process* property rather

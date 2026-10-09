@@ -111,7 +111,7 @@ Plan these before generating, and vary them deliberately rather than at random:
 | difficulty | `ordinary`, `difficult` |
 | flow | the four `Item Category` values in `facts.yaml` |
 
-**Flow is the dimension Oakline has no analogue for, and it is the one most
+**Flow is the dimension unique to this domain, and it is the one most
 often forgotten.** Every control rule is flow-scoped: a missing goods receipt is a
 breach on a 3-way flow and correct on a 2-way one, and `Consignment` is outside
 invoice matching altogether. A dataset that is all 3-way tests one quarter of the
